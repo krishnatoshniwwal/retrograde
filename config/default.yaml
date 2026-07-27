@@ -1,0 +1,30 @@
+image:
+  max_dim: 512          # longest side is scaled to this in pixels
+  denoise_kernel: 5     # Gaussian blur kernel size (odd integer)
+
+edge:
+  canny_low: 50         # lower hysteresis threshold for Canny
+  canny_high: 150       # upper hysteresis threshold for Canny
+
+contour:
+  min_length: 20        # discard contours with fewer points than this
+  epsilon_fraction: 0.002  # Douglas-Peucker tolerance as fraction of arc length
+
+fourier:
+  n_terms: 100          # number of epicycles / Fourier coefficients to keep
+
+spline:
+  n_knots: 50           # approximate number of spline knots per contour
+
+render:
+  theme: dark           # "dark" or "light"
+  colormap: plasma      # matplotlib colormap for gradient coloring
+  fps: 30               # frames per second for animation
+  animation_frames: 300 # total frames in epicycle animation
+  line_width: 1.2       # stroke width for static plots
+  figsize: [10, 10]     # matplotlib figure size in inches
+
+export:
+  output_dir: output/   # default directory for saving all outputs
+  animation_format: gif # "gif" or "mp4"
+  latex_compile: false  # attempt to compile .tex to PDF via pdflatex
