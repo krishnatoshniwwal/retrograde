@@ -40,7 +40,7 @@ from src.render import (
 from src.latex_export import build_latex_document, generate_pdf_bytes
 from src.desmos_export import (
     build_desmos_expression_list,
-    expression_list_to_json,
+    expression_list_to_desmos_state,
     build_desmos_html,
 )
 
@@ -55,313 +55,136 @@ st.set_page_config(
 # ── Custom CSS ─────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=JetBrains+Mono:wght@400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Inter:wght@400;600;700&display=swap');
 
 html, body, [class*="css"] {
-    font-family: 'JetBrains Mono', monospace;
-    background-color: #030303;
-    color: #00f0ff;
+    font-family: 'Inter', sans-serif;
+    background-color: #f8f9fb;
+    color: #1a1a2e;
 }
+.stApp { background: #f8f9fb; min-height: 100vh; }
 
-/* ── Background ── */
-.stApp {
-    background: #030303;
-    background-image: 
-        linear-gradient(rgba(0, 240, 255, 0.04) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(0, 240, 255, 0.04) 1px, transparent 1px);
-    background-size: 30px 30px;
-    min-height: 100vh;
-}
-
-/* ── Sidebar ── */
 [data-testid="stSidebar"] {
-    background: rgba(3, 3, 3, 0.98) !important;
-    border-right: 1px solid #00f0ff;
-    box-shadow: 2px 0 20px rgba(0, 240, 255, 0.15);
+    background: #ffffff !important;
+    border-right: 1px solid #e2e8f0;
+    box-shadow: 2px 0 12px rgba(0,0,0,0.06);
 }
-[data-testid="stSidebar"] > div:first-child {
-    padding-top: 1.5rem;
-}
+[data-testid="stSidebar"] > div:first-child { padding-top: 1.5rem; }
 [data-testid="stSidebarContent"] label,
-[data-testid="stSidebarContent"] .stMarkdown p {
-    color: #a0a0a0 !important;
-    font-size: 0.85rem;
-}
+[data-testid="stSidebarContent"] .stMarkdown p { color: #64748b !important; font-size: 0.85rem; }
 
-/* ── Sidebar section headers ── */
 .sidebar-section {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 0 6px 0;
-    color: #00f0ff !important;
-    font-size: 0.85rem;
-    font-weight: 700;
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-    border-bottom: 1px solid rgba(0, 240, 255, 0.3);
-    margin-bottom: 10px;
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 0 6px 0; color: #4f46e5 !important;
+    font-size: 0.75rem; font-weight: 700; letter-spacing: 0.12em;
+    text-transform: uppercase; border-bottom: 1px solid #e2e8f0; margin-bottom: 10px;
 }
-.sidebar-section::before {
-    content: '>>';
-    color: #ff003c;
-}
+.sidebar-section::before { content: '>>'; color: #e11d48; }
 
-/* ── Hero header ── */
 .hero-title {
     font-family: 'Share Tech Mono', monospace;
-    font-size: 3.5rem;
-    font-weight: 400;
-    color: #00f0ff;
-    text-shadow: 0 0 15px rgba(0, 240, 255, 0.6);
-    margin-bottom: 0.2rem;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
+    font-size: 3rem; font-weight: 400; color: #1a1a2e;
+    margin-bottom: 0.2rem; letter-spacing: 0.03em; text-transform: uppercase;
 }
-.hero-subtitle {
-    font-size: 1rem;
-    color: #888;
-    margin-bottom: 0;
-    line-height: 1.6;
-}
-.hero-subtitle b {
-    color: #ff003c;
-}
+.hero-subtitle { font-size: 1rem; color: #64748b; margin-bottom: 0; line-height: 1.6; }
+.hero-subtitle b { color: #e11d48; }
 .hero-badge {
-    display: inline-block;
-    padding: 4px 12px;
-    font-size: 0.75rem;
-    font-weight: 700;
-    letter-spacing: 0.1em;
-    margin-right: 8px;
-    text-transform: uppercase;
-    border: 1px solid;
+    display: inline-block; padding: 4px 12px; font-size: 0.75rem;
+    font-weight: 700; letter-spacing: 0.08em; margin-right: 8px;
+    text-transform: uppercase; border: 1px solid; border-radius: 4px;
 }
-.badge-fourier { color: #00f0ff; border-color: #00f0ff; background: rgba(0, 240, 255, 0.1); }
-.badge-spline  { color: #ff003c; border-color: #ff003c; background: rgba(255, 0, 60, 0.1); }
-.badge-math    { color: #ffff00; border-color: #ffff00; background: rgba(255, 255, 0, 0.1); }
+.badge-fourier { color: #4f46e5; border-color: #4f46e5; background: rgba(79,70,229,0.08); }
+.badge-spline  { color: #e11d48; border-color: #e11d48; background: rgba(225,29,72,0.08); }
+.badge-math    { color: #0891b2; border-color: #0891b2; background: rgba(8,145,178,0.08); }
 
-/* ── Stat cards ── */
-.stat-row {
-    display: flex;
-    gap: 15px;
-    margin: 1.5rem 0 1rem 0;
-}
+.stat-row { display: flex; gap: 15px; margin: 1.5rem 0 1rem 0; }
 .stat-card {
-    flex: 1;
-    background: rgba(0, 0, 0, 0.8);
-    border: 1px solid rgba(0, 240, 255, 0.4);
-    padding: 15px 20px;
-    position: relative;
-    box-shadow: inset 0 0 20px rgba(0, 240, 255, 0.05);
+    flex: 1; background: #ffffff; border: 1px solid #e2e8f0;
+    border-radius: 8px; padding: 15px 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);
 }
-.stat-card::before {
-    content: ''; position: absolute; top: 0; left: 0;
-    width: 20px; height: 20px; border-top: 2px solid #ff003c; border-left: 2px solid #ff003c;
-}
-.stat-card::after {
-    content: ''; position: absolute; bottom: 0; right: 0;
-    width: 20px; height: 20px; border-bottom: 2px solid #ff003c; border-right: 2px solid #ff003c;
-}
-.stat-value {
-    font-size: 1.8rem;
-    font-weight: 700;
-    color: #00f0ff;
-    line-height: 1;
-    margin-bottom: 6px;
-    text-shadow: 0 0 8px rgba(0, 240, 255, 0.6);
-}
-.stat-label {
-    font-size: 0.75rem;
-    color: #a0a0a0;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-}
-.stat-icon {
-    position: absolute;
-    top: 15px; right: 20px;
-    font-size: 1.2rem;
-    color: #ff003c;
-    font-weight: bold;
-    font-family: 'Share Tech Mono', monospace;
-}
+.stat-value { font-size: 1.8rem; font-weight: 700; color: #4f46e5; line-height: 1; margin-bottom: 6px; }
+.stat-label { font-size: 0.75rem; color: #94a3b8; letter-spacing: 0.08em; text-transform: uppercase; }
+.stat-icon { position: absolute; top: 15px; right: 20px; font-size: 1.2rem; color: #e11d48; font-weight: bold; font-family: 'Share Tech Mono', monospace; }
 
-/* ── Glass cards / Containers ── */
 .card-title {
-    font-size: 0.9rem;
-    font-weight: 700;
-    color: #00f0ff;
-    text-transform: uppercase;
-    letter-spacing: 0.15em;
-    margin-bottom: 1rem;
-    display: flex;
-    align-items: center;
-    gap: 8px;
+    font-size: 0.85rem; font-weight: 700; color: #4f46e5;
+    text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 1rem;
+    display: flex; align-items: center; gap: 8px;
 }
-.card-title::before { content: '//'; color: #ff003c; }
-.card-title::after {
-    content: ''; flex: 1; height: 1px;
-    background: rgba(0, 240, 255, 0.3);
-}
+.card-title::before { content: '//'; color: #e11d48; }
+.card-title::after { content: ''; flex: 1; height: 1px; background: #e2e8f0; }
 
-/* ── Info / alert boxes ── */
 .info-box {
-    background: rgba(0, 240, 255, 0.05);
-    border-left: 2px solid #00f0ff;
-    padding: 0.8rem 1rem;
-    margin: 0.6rem 0;
-    font-size: 0.85rem;
-    color: #a0a0a0;
-    line-height: 1.5;
+    background: #f1f5f9; border-left: 3px solid #4f46e5;
+    padding: 0.8rem 1rem; margin: 0.6rem 0; font-size: 0.85rem;
+    color: #475569; line-height: 1.5; border-radius: 0 4px 4px 0;
 }
-.info-box code {
-    background: rgba(0, 240, 255, 0.15);
-    color: #00f0ff;
-    padding: 2px 6px;
-    border: 1px solid rgba(0, 240, 255, 0.3);
-}
+.info-box code { background: #e0e7ff; color: #4f46e5; padding: 2px 6px; border-radius: 3px; }
 .success-box {
-    background: rgba(57, 255, 20, 0.05);
-    border-left: 2px solid #39ff14;
-    padding: 0.8rem 1rem;
-    margin: 0.6rem 0;
-    font-size: 0.85rem;
-    color: #39ff14;
+    background: #f0fdf4; border-left: 3px solid #16a34a;
+    padding: 0.8rem 1rem; margin: 0.6rem 0; font-size: 0.85rem;
+    color: #15803d; border-radius: 0 4px 4px 0;
 }
 .warning-box {
-    background: rgba(255, 255, 0, 0.05);
-    border-left: 2px solid #ffff00;
-    padding: 0.8rem 1rem;
-    margin: 0.6rem 0;
-    font-size: 0.85rem;
-    color: #ffff00;
+    background: #fffbeb; border-left: 3px solid #d97706;
+    padding: 0.8rem 1rem; margin: 0.6rem 0; font-size: 0.85rem;
+    color: #92400e; border-radius: 0 4px 4px 0;
 }
 
-/* ── Download cards ── */
 .dl-card {
-    background: rgba(0, 0, 0, 0.8);
-    border: 1px solid rgba(0, 240, 255, 0.3);
-    padding: 1.5rem;
-    height: 100%;
-    position: relative;
-    transition: all 0.2s;
+    background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px;
+    padding: 1.5rem; height: 100%; transition: all 0.2s;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.05);
 }
-.dl-card:hover { 
-    border-color: #00f0ff;
-    box-shadow: 0 0 15px rgba(0, 240, 255, 0.2);
-}
-.dl-icon { font-size: 1.2rem; color: #ff003c; margin-bottom: 10px; font-family: 'Share Tech Mono', monospace; }
-.dl-title { font-size: 1rem; font-weight: 700; color: #00f0ff; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em; }
-.dl-desc  { font-size: 0.8rem; color: #a0a0a0; margin-bottom: 16px; line-height: 1.5; }
+.dl-card:hover { border-color: #4f46e5; box-shadow: 0 4px 12px rgba(79,70,229,0.12); }
+.dl-icon { font-size: 1.1rem; color: #e11d48; margin-bottom: 10px; font-family: 'Share Tech Mono', monospace; }
+.dl-title { font-size: 1rem; font-weight: 700; color: #1a1a2e; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.04em; }
+.dl-desc  { font-size: 0.8rem; color: #94a3b8; margin-bottom: 16px; line-height: 1.5; }
 
-/* ── Buttons ── */
 .stButton > button {
-    background: transparent !important;
-    color: #00f0ff !important;
-    border: 1px solid #00f0ff !important;
-    border-radius: 0;
-    font-weight: 700;
-    font-size: 0.85rem;
-    padding: 0.6rem 1.2rem;
-    transition: all 0.2s ease;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    width: 100%;
+    background: #4f46e5 !important; color: #ffffff !important; border: none !important;
+    border-radius: 6px; font-weight: 600; font-size: 0.85rem; padding: 0.6rem 1.2rem;
+    transition: all 0.2s ease; letter-spacing: 0.06em; text-transform: uppercase; width: 100%;
 }
-.stButton > button:hover {
-    background: rgba(0, 240, 255, 0.1) !important;
-    box-shadow: 0 0 15px rgba(0, 240, 255, 0.4);
-}
+.stButton > button:hover { background: #4338ca !important; box-shadow: 0 4px 12px rgba(79,70,229,0.3); }
 
-/* Download buttons */
 .stDownloadButton > button {
-    background: rgba(255, 0, 60, 0.05) !important;
-    border: 1px solid #ff003c !important;
-    color: #ff003c !important;
-    border-radius: 0;
-    font-weight: 700;
-    font-size: 0.85rem;
-    transition: all 0.2s;
-    width: 100%;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
+    background: #ffffff !important; border: 1.5px solid #e11d48 !important; color: #e11d48 !important;
+    border-radius: 6px; font-weight: 600; font-size: 0.85rem; transition: all 0.2s;
+    width: 100%; letter-spacing: 0.06em; text-transform: uppercase;
 }
-.stDownloadButton > button:hover {
-    background: rgba(255, 0, 60, 0.15) !important;
-    box-shadow: 0 0 15px rgba(255, 0, 60, 0.4);
-}
+.stDownloadButton > button:hover { background: #fff1f2 !important; box-shadow: 0 4px 12px rgba(225,29,72,0.15); }
 
-/* ── Tabs ── */
-.stTabs [data-baseweb="tab-list"] {
-    background: transparent;
-    border-bottom: 1px solid rgba(0, 240, 255, 0.3);
-    gap: 0;
-}
+.stTabs [data-baseweb="tab-list"] { background: transparent; border-bottom: 2px solid #e2e8f0; gap: 0; }
 .stTabs [data-baseweb="tab"] {
-    border-radius: 0;
-    color: #666;
-    font-weight: 700;
-    font-size: 0.85rem;
-    padding: 10px 20px;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    border: 1px solid transparent;
-    border-bottom: none;
+    border-radius: 0; color: #94a3b8; font-weight: 600; font-size: 0.85rem;
+    padding: 10px 20px; text-transform: uppercase; letter-spacing: 0.08em; border: none;
 }
-.stTabs [data-baseweb="tab"]:hover { color: #a0a0a0; }
+.stTabs [data-baseweb="tab"]:hover { color: #475569; }
 .stTabs [aria-selected="true"] {
-    background: rgba(0, 240, 255, 0.05) !important;
-    color: #00f0ff !important;
-    border: 1px solid #00f0ff !important;
-    border-bottom: 1px solid #030303 !important;
-    margin-bottom: -1px;
+    background: transparent !important; color: #4f46e5 !important;
+    border-bottom: 2px solid #4f46e5 !important; margin-bottom: -2px;
 }
 
-
-
-/* ── Expanders ── */
 .streamlit-expanderHeader {
-    background: rgba(0, 0, 0, 0.8) !important;
-    border: 1px solid #00f0ff !important;
-    border-radius: 0 !important;
-    color: #00f0ff !important;
-    font-weight: 700;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
+    background: #f8fafc !important; border: 1px solid #e2e8f0 !important;
+    border-radius: 6px !important; color: #1a1a2e !important;
+    font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
 }
 .streamlit-expanderContent {
-    background: rgba(0, 0, 0, 0.5) !important;
-    border: 1px solid rgba(0, 240, 255, 0.3) !important;
-    border-top: none !important;
-    border-radius: 0 !important;
+    background: #ffffff !important; border: 1px solid #e2e8f0 !important;
+    border-top: none !important; border-radius: 0 0 6px 6px !important;
 }
 
-/* ── Scrollbar ── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: #000; }
-::-webkit-scrollbar-thumb { background: #00f0ff; }
-::-webkit-scrollbar-thumb:hover { background: #ff003c; }
+::-webkit-scrollbar-track { background: #f1f5f9; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
-/* ── Horizontal divider ── */
-hr { border-color: rgba(0, 240, 255, 0.2) !important; }
-
-/* ── Image containers ── */
-.stImage > img {
-    border: 1px solid #00f0ff;
-    box-shadow: 0 0 15px rgba(0, 240, 255, 0.15);
-}
-
-/* ── Radio & Selectbox ── */
-.stRadio label { color: #00f0ff !important; font-weight: 700; text-transform: uppercase; }
-.stSelectbox > div > div {
-    background: rgba(0, 0, 0, 0.8) !important;
-    border: 1px solid #00f0ff !important;
-    border-radius: 0 !important;
-    color: #00f0ff !important;
-}
-
-/* ── LaTeX rendering ── */
-.katex { color: #00f0ff !important; }
+hr { border-color: #e2e8f0 !important; }
+.stImage > img { border: 1px solid #e2e8f0; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+.stRadio label { color: #4f46e5 !important; font-weight: 600; text-transform: uppercase; }
+.katex { color: #1a1a2e !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -457,14 +280,46 @@ def run_pipeline(
     }
 
 
+# ── Spline pipeline — always used for Desmos export ───────────────────────
+# Splines are piecewise polynomials: Desmos evaluates them exactly with no
+# sampling artefacts, regardless of which method the user selected in the UI.
+@st.cache_data(show_spinner=False)
+def run_spline_for_desmos(
+    img_bytes: bytes,
+    canny_low: int,
+    canny_high: int,
+    max_dim: int,
+    max_contours: int,
+) -> list[dict]:
+    """Run the spline pipeline on every contour, cached for Desmos export."""
+    img_arr = np.array(Image.open(io.BytesIO(img_bytes)).convert("RGB"))
+    config = {
+        "image": {"max_dim": max_dim, "denoise_kernel": 5},
+        "edge": {"canny_low": canny_low, "canny_high": canny_high},
+        "contour": {"min_length": 15, "epsilon_fraction": 0.002},
+        "spline": {"n_knots": 60},
+    }
+    edges, _ = preprocess_array(img_arr, config=config)
+    contours = get_all_contours(edges, config=config, simplify=True)
+    contours = contours[:max_contours]
+    results = []
+    for c in contours:
+        try:
+            results.append(spline_pipeline(c, config=config))
+        except ValueError:
+            continue
+    return results
+
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # SIDEBAR
 # ══════════════════════════════════════════════════════════════════════════════
 with st.sidebar:
     st.markdown("""
     <div style="text-align:center; padding: 0.5rem 0 1.2rem;">
-        <div style="font-family:'Share Tech Mono', monospace; font-size:2.5rem; color:#00f0ff; text-shadow:0 0 15px rgba(0,240,255,0.6); margin-bottom:4px; letter-spacing:0.05em;">RETROGRADE</div>
-        <div style="font-size:0.7rem; color:#ff003c; font-weight:700; letter-spacing:0.2em; text-transform:uppercase; margin-top:2px;">SYS // V1.0</div>
+        <div style="font-family:'Share Tech Mono', monospace; font-size:2.5rem; color:#1a1a2e; margin-bottom:4px; letter-spacing:0.05em;">RETROGRADE</div>
+        <div style="font-size:0.7rem; color:#e11d48; font-weight:700; letter-spacing:0.2em; text-transform:uppercase; margin-top:2px;">SYS // V1.0</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -508,7 +363,7 @@ with st.sidebar:
 
     # ── APPEARANCE ──
     st.markdown('<div class="sidebar-section">RENDER_CONFIG</div>', unsafe_allow_html=True)
-    theme = st.selectbox("THEME_PROFILE", ["dark", "light"])
+    theme = "light"  # light mode only
     colormap = st.selectbox(
         "COLORMAP_PRESET",
         ["plasma", "viridis", "inferno", "magma", "cool", "spring", "turbo", "rainbow"],
@@ -873,55 +728,69 @@ with tab_download:
             st.markdown('<div class="info-box" style="font-size:0.8rem;">[ AWAITING_PIPELINE ]</div>', unsafe_allow_html=True)
 
     # ── Desmos ───────────────────────────────────────────────────────────────
+    # ── Desmos ───────────────────────────────────────────────────────────────
+    # -- Desmos -------------------------------------------------------------------
     with dl4:
         st.markdown("""
         <div class="dl-card">
             <div class="dl-icon">[ DSM ]</div>
             <div class="dl-title">DESMOS_GRAPH</div>
-            <div class="dl-desc">Interactive graph + JSON expression list for Desmos.</div>
+            <div class="dl-desc">Spline-based export (polynomial curves, exact in Desmos).</div>
         </div>
         """, unsafe_allow_html=True)
 
         if results:
-            _method_key_dsm = "fourier" if "Fourier" in method else "piecewise"
-            _n_terms_dsm = n_terms if _method_key_dsm == "fourier" else 80
+            with st.spinner("Building spline graph..."):
+                dsm_results = run_spline_for_desmos(
+                    img_bytes=img_bytes,
+                    canny_low=canny_low,
+                    canny_high=canny_high,
+                    max_dim=max_dim,
+                    max_contours=min(max_contours, 60),
+                )
 
-            desmos_exprs = build_desmos_expression_list(
-                results,
-                method=_method_key_dsm,
-                n_terms=_n_terms_dsm,
-                max_contours=min(len(results), 60),
-            )
+            if dsm_results:
+                desmos_exprs = build_desmos_expression_list(
+                    dsm_results,
+                    method="piecewise",
+                    max_contours=len(dsm_results),
+                    max_segs_per_contour=30,
+                )
 
-            desmos_json = expression_list_to_json(desmos_exprs)
-            st.download_button(
-                "[ DL_DESMOS_JSON ]",
-                data=desmos_json.encode("utf-8"),
-                file_name=f"{img_name}_desmos.json",
-                mime="application/json",
-                key="dl_dsm_json",
-            )
+                desmos_state = expression_list_to_desmos_state(desmos_exprs)
+                st.download_button(
+                    "[ DL_DESMOS_STATE ]",
+                    data=desmos_state.encode("utf-8"),
+                    file_name=f"{img_name}_desmos.json",
+                    mime="application/json",
+                    key="dl_dsm_json",
+                    help="desmos.com hamburger menu > Load Graph",
+                )
 
-            desmos_html_str = build_desmos_html(
-                desmos_exprs,
-                title=f"retrograde — {img_name}",
-            )
-            st.download_button(
-                "[ DL_DESMOS_HTML ]",
-                data=desmos_html_str.encode("utf-8"),
-                file_name=f"{img_name}_desmos.html",
-                mime="text/html",
-                key="dl_dsm_html",
-            )
+                desmos_html_str = build_desmos_html(
+                    desmos_exprs,
+                    title=f"retrograde - {img_name}",
+                )
+                st.download_button(
+                    "[ DL_DESMOS_HTML ]",
+                    data=desmos_html_str.encode("utf-8"),
+                    file_name=f"{img_name}_desmos.html",
+                    mime="text/html",
+                    key="dl_dsm_html",
+                )
 
-            st.markdown(
-                f'<div class="info-box" style="font-size:0.75rem;">'
-                f'[ EXPR_COUNT ] {len(desmos_exprs)} expressions · '
-                f'{min(len(results), 60)} contours</div>',
-                unsafe_allow_html=True,
-            )
+                seg_count = sum(len(r.get("segments", [])) for r in dsm_results)
+                st.markdown(
+                    f'<div class="info-box" style="font-size:0.75rem;">'
+                    f'[ SPLINE ] {len(dsm_results)} contours | '
+                    f'{seg_count} segments | {len(desmos_exprs)} expressions</div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown('<div class="info-box" style="font-size:0.8rem;">[ NO_CONTOURS ] Adjust edge thresholds.</div>', unsafe_allow_html=True)
         else:
             st.markdown('<div class="info-box" style="font-size:0.8rem;">[ AWAITING_PIPELINE ]</div>', unsafe_allow_html=True)
+
 
 
 # ── Footer ────────────────────────────────────────────────────────────────
@@ -929,10 +798,10 @@ st.markdown("<hr style='margin: 2rem 0 1rem;'>", unsafe_allow_html=True)
 st.markdown("""
 <div style="display:flex; justify-content:space-between; align-items:center;
      padding: 0 0.5rem 1rem; flex-wrap:wrap; gap:0.5rem;">
-    <div style="font-size:0.75rem; color:#00f0ff; font-weight:700; letter-spacing:0.1em; text-transform:uppercase;">
+    <div style="font-size:0.75rem; color:#1a1a2e; font-weight:700; letter-spacing:0.1em; text-transform:uppercase;">
         [ RETROGRADE ] // IMG_TO_FUNC
     </div>
-    <div style="font-size:0.75rem; color:#ff003c; font-family:'Share Tech Mono', monospace;">
+    <div style="font-size:0.75rem; color:#e11d48; font-family:'Share Tech Mono', monospace;">
         SYS_ONLINE
     </div>
 </div>

@@ -123,8 +123,10 @@ def fourier_to_desmos_exprs(
     y_latex_rhs = "+".join(y_parts) if y_parts else "0"
 
     # Desmos function definitions use subscript notation: x_{0}(t)
+    # NOTE: image y-axis points downward; Desmos y-axis points upward.
+    # Negate y so the rendered shape is the right way up.
     x_def = f"x_{{f{i}}}\\left(t\\right)={x_latex_rhs}"
-    y_def = f"y_{{f{i}}}\\left(t\\right)={y_latex_rhs}"
+    y_def = f"y_{{f{i}}}\\left(t\\right)=-\\left({y_latex_rhs}\\right)"
 
     # Parametric curve with domain restriction
     curve = (
@@ -198,10 +200,13 @@ def spline_to_desmos_exprs(
         x_rhs = _poly_latex(seg.x_coeffs, var="t", t_start=t0)
         y_rhs = _poly_latex(seg.y_coeffs, var="t", t_start=t0)
 
+        # Negate y so image coords (y downward) map correctly to Desmos (y upward)
+        y_rhs_neg = f"-\\left({y_rhs}\\right)" if y_rhs != "0" else "0"
+
         t0_s = f"{t0:.6g}"
         t1_s = f"{t1:.6g}"
         domain = f"\\left\\{{{t0_s}\\le t\\le{t1_s}\\right\\}}"
-        curve = f"\\left({x_rhs},\\ {y_rhs}\\right){domain}"
+        curve = f"\\left({x_rhs},\\ {y_rhs_neg}\\right){domain}"
 
         exprs.append({
             "id": f"cs{i}_{seg_idx}",
@@ -261,11 +266,61 @@ def build_desmos_expression_list(
 # Serialise to JSON
 # ---------------------------------------------------------------------------
 
-def expression_list_to_json(exprs: list[dict[str, str]]) -> str:
-    """Serialise the Desmos expression list to a pretty-printed JSON string.
+def expression_list_to_desmos_state(
+    exprs: list[dict[str, str]],
+    viewport: dict | None = None,
+) -> str:
+    """Serialise expressions as a Desmos native save-state JSON.
 
-    The resulting JSON can be imported into desmos.com via the expression
-    panel's import/export dialog.
+    This is the format desmos.com expects when you use:
+      Hamburger menu → Load Graph → choose this file.
+
+    Each expression is wrapped with ``"type": "expression"`` and the whole
+    object is wrapped in the standard Desmos state envelope
+    (``version``, ``graph``, ``expressions``).
+
+    Args:
+        exprs: List of expression dicts from build_desmos_expression_list.
+        viewport: Optional dict with keys xmin, xmax, ymin, ymax.  A
+                  reasonable default is supplied if omitted.
+
+    Returns:
+        Pretty-printed JSON string, directly loadable at desmos.com/calculator.
+    """
+    vp = viewport or {"xmin": -400, "ymin": -400, "xmax": 400, "ymax": 400}
+
+    state = {
+        "version": 9,
+        "graph": {
+            "viewport": vp,
+            "showGrid": False,
+            "showXAxis": False,
+            "showYAxis": False,
+        },
+        "expressions": {
+            "list": [
+                {
+                    "type": "expression",
+                    "id": e["id"],
+                    "color": e["color"],
+                    "latex": e["latex"],
+                    **(  # propagate optional fields cleanly
+                        {"hidden": True} if e.get("hidden") else {}
+                    ),
+                }
+                for e in exprs
+            ]
+        },
+    }
+    return json.dumps(state, indent=2, ensure_ascii=False)
+
+
+def expression_list_to_json(exprs: list[dict[str, str]]) -> str:
+    """Serialise the raw Desmos API expression list (for programmatic use).
+
+    This format is suitable for ``calculator.setExpression()`` calls via the
+    Desmos JS API.  It is NOT directly importable via the desmos.com web UI.
+    Use :func:`expression_list_to_desmos_state` for that.
 
     Args:
         exprs: List of expression dicts.
@@ -311,8 +366,8 @@ def build_desmos_html(
 <style>
   * {{ box-sizing: border-box; margin: 0; padding: 0; }}
   body {{
-    background: #0a0a0a;
-    color: #00f0ff;
+    background: #ffffff;
+    color: #1a1a1a;
     font-family: 'Courier New', monospace;
     height: 100vh;
     display: flex;
@@ -323,9 +378,8 @@ def build_desmos_html(
     align-items: center;
     justify-content: space-between;
     padding: 0.6rem 1.2rem;
-    border-bottom: 1px solid rgba(0,240,255,0.3);
-    background: rgba(0,0,0,0.8);
-    backdrop-filter: blur(8px);
+    border-bottom: 1px solid #d0d0d0;
+    background: #f5f5f5;
     flex-shrink: 0;
   }}
   header .logo {{
@@ -333,11 +387,11 @@ def build_desmos_html(
     font-weight: 700;
     letter-spacing: 0.18em;
     text-transform: uppercase;
-    color: #00f0ff;
+    color: #1a1a1a;
   }}
   header .meta {{
     font-size: 0.7rem;
-    color: #555;
+    color: #888;
     letter-spacing: 0.08em;
   }}
   #calc-container {{
@@ -355,19 +409,19 @@ def build_desmos_html(
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    background: #0a0a0a;
+    background: #ffffff;
     gap: 1rem;
     z-index: 10;
     transition: opacity 0.4s ease;
   }}
   #loading .spinner {{
     width: 40px; height: 40px;
-    border: 3px solid rgba(0,240,255,0.2);
-    border-top-color: #00f0ff;
+    border: 3px solid #e0e0e0;
+    border-top-color: #333;
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
   }}
-  #loading p {{ font-size: 0.8rem; color: #555; letter-spacing: 0.1em; }}
+  #loading p {{ font-size: 0.8rem; color: #888; letter-spacing: 0.1em; }}
   @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
 </style>
 </head>
@@ -396,10 +450,13 @@ def build_desmos_html(
     expressions: true,
     keypad: false,
     border: false,
+    // Start with a viewport large enough to contain pixel-space image coords
+    // (images are resized to max ~512px; contour coords sit in that range)
+    mathBounds: {{ left: -600, right: 1100, bottom: -900, top: 600 }},
   }});
 
-  // Set a dark background via the API
-  calc.updateSettings({{ backgroundColor: '#111111' }});
+  // White background for Desmos canvas
+  calc.updateSettings({{ backgroundColor: '#ffffff' }});
 
   // Inject all expressions
   exprs.forEach(function(expr) {{
@@ -408,14 +465,20 @@ def build_desmos_html(
     calc.setExpression(entry);
   }});
 
-  // Auto-fit the view to all curves
-  calc.setMathBounds(calc.graphpaperBounds.mathCoordinates);
-  setTimeout(function() {{ calc.zoomFit(); }}, 600);
+  // zoomFit after expressions have had time to evaluate.
+  // Parametric curves need a moment; we try at 1 s and again at 3 s.
+  function tryZoomFit() {{
+    try {{ calc.zoomFit(); }} catch(e) {{}}
+  }}
+  setTimeout(tryZoomFit, 1000);
+  setTimeout(tryZoomFit, 3000);
 
-  // Hide loading overlay
+  // Hide loading overlay after the first zoomFit attempt
   var loading = document.getElementById('loading');
-  loading.style.opacity = '0';
-  setTimeout(function() {{ loading.style.display = 'none'; }}, 450);
+  setTimeout(function() {{
+    loading.style.opacity = '0';
+    setTimeout(function() {{ loading.style.display = 'none'; }}, 400);
+  }}, 1200);
 }})();
 </script>
 </body>

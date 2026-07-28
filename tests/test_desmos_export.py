@@ -15,6 +15,7 @@ from src.desmos_export import (
     fourier_to_desmos_exprs,
     spline_to_desmos_exprs,
     build_desmos_expression_list,
+    expression_list_to_desmos_state,
     expression_list_to_json,
     build_desmos_html,
     _contour_color,
@@ -233,6 +234,92 @@ class TestExpressionListToJson:
             assert orig["id"] == parsed_item["id"]
             assert orig["latex"] == parsed_item["latex"]
             assert orig["color"] == parsed_item["color"]
+
+
+# ---------------------------------------------------------------------------
+# expression_list_to_desmos_state  (directly loadable at desmos.com)
+# ---------------------------------------------------------------------------
+
+class TestExpressionListToDesmosState:
+    def _get_state(self, n_contours: int = 1, n_terms: int = 2) -> dict:
+        coeffs = _make_coeffs(3)
+        exprs = build_desmos_expression_list(
+            [{"coeffs": coeffs}] * n_contours, n_terms=n_terms
+        )
+        return json.loads(expression_list_to_desmos_state(exprs))
+
+    def test_valid_json(self):
+        """Output must be valid JSON."""
+        coeffs = _make_coeffs(3)
+        exprs = build_desmos_expression_list([{"coeffs": coeffs}], n_terms=2)
+        state_str = expression_list_to_desmos_state(exprs)
+        state = json.loads(state_str)
+        assert isinstance(state, dict)
+
+    def test_top_level_keys(self):
+        """State must have version, graph, and expressions keys."""
+        state = self._get_state()
+        assert "version" in state
+        assert "graph" in state
+        assert "expressions" in state
+
+    def test_version_is_9(self):
+        """Desmos state version should be 9."""
+        state = self._get_state()
+        assert state["version"] == 9
+
+    def test_graph_has_viewport(self):
+        """graph.viewport must be present with xmin/xmax/ymin/ymax."""
+        state = self._get_state()
+        vp = state["graph"]["viewport"]
+        for key in ("xmin", "xmax", "ymin", "ymax"):
+            assert key in vp, f"Missing viewport key: {key!r}"
+
+    def test_expressions_list_present(self):
+        """expressions.list must be a list."""
+        state = self._get_state()
+        assert isinstance(state["expressions"]["list"], list)
+
+    def test_each_entry_has_type_expression(self):
+        """Every entry in expressions.list must have type='expression'."""
+        state = self._get_state()
+        for entry in state["expressions"]["list"]:
+            assert entry.get("type") == "expression", \
+                f"Missing/wrong type on entry: {entry.get('id')!r}"
+
+    def test_each_entry_has_required_fields(self):
+        """Every entry must have id, color, and latex."""
+        state = self._get_state()
+        for entry in state["expressions"]["list"]:
+            assert "id" in entry
+            assert "color" in entry
+            assert "latex" in entry
+
+    def test_expression_count_matches(self):
+        """Number of entries in state should match expression list length."""
+        coeffs = _make_coeffs(3)
+        exprs = build_desmos_expression_list([{"coeffs": coeffs}], n_terms=2)
+        state = json.loads(expression_list_to_desmos_state(exprs))
+        assert len(state["expressions"]["list"]) == len(exprs)
+
+    def test_hidden_flag_propagated(self):
+        """Hidden flag from expression dicts must appear in state entries."""
+        coeffs = _make_coeffs(3)
+        exprs = build_desmos_expression_list([{"coeffs": coeffs}], n_terms=2)
+        hidden_exprs = [e for e in exprs if e.get("hidden")]
+        assert len(hidden_exprs) > 0, "Expected some hidden helper expressions"
+        state = json.loads(expression_list_to_desmos_state(exprs))
+        state_ids = {e["id"]: e for e in state["expressions"]["list"]}
+        for expr in hidden_exprs:
+            assert state_ids[expr["id"]].get("hidden") is True
+
+    def test_custom_viewport(self):
+        """A custom viewport should appear in the state."""
+        coeffs = _make_coeffs(3)
+        exprs = build_desmos_expression_list([{"coeffs": coeffs}], n_terms=2)
+        vp = {"xmin": -100, "xmax": 100, "ymin": -50, "ymax": 50}
+        state = json.loads(expression_list_to_desmos_state(exprs, viewport=vp))
+        assert state["graph"]["viewport"] == vp
 
 
 # ---------------------------------------------------------------------------

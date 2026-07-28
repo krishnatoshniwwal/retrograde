@@ -36,9 +36,15 @@ def extract_contours(
     raw, _ = cv2.findContours(
         edge_map, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE
     )
+    
+    h, w = edge_map.shape
+    cx, cy = w / 2.0, h / 2.0
+    
     result = []
     for contour in raw:
         pts = contour.reshape(-1, 2).astype(np.float32)
+        # Shift coordinates to be centered around the origin (0,0)
+        pts -= np.array([cx, cy], dtype=np.float32)
         if len(pts) >= min_length:
             result.append(pts)
     # Sort by length descending so the most prominent contours come first
