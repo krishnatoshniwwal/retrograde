@@ -148,6 +148,13 @@ plt.close(fig)
 pytest tests/ -v
 ```
 
+### 5. Export to Desmos
+
+After processing an image in the Streamlit UI, go to the **Downloads** tab and find the `[ DSM ]` card:
+
+- **`[ DL_DESMOS_JSON ]`** — download a JSON expression list and import it into [desmos.com/calculator](https://desmos.com/calculator) via the expression panel's import dialog.
+- **`[ DL_DESMOS_HTML ]`** — download a self-contained HTML file. Open it in any browser to get a fully interactive, zoomable Desmos graph with all equations loaded and a per-contour color legend — no login needed.
+
 ---
 
 ## Configuration
@@ -183,7 +190,7 @@ render:
 | 1 | Fourier / epicycles, animation, SymPy LaTeX | ✅ |
 | 2 | Gradient rendering, themes, unit tests, YAML config, CI | ✅ |
 | 3 | Streamlit UI, fidelity slider, live preview, downloads | ✅ |
-| 3.5 | Desmos export, neon rendering | 🔜 |
+| 3.5 | Desmos export, neon rendering | ✅ |
 | 4 | Error curves, web deployment, video input | 🔜 |
 
 ---

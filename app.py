@@ -38,6 +38,11 @@ from src.render import (
     animation_to_gif_bytes,
 )
 from src.latex_export import build_latex_document, generate_pdf_bytes
+from src.desmos_export import (
+    build_desmos_expression_list,
+    expression_list_to_json,
+    build_desmos_html,
+)
 
 
 # ── Page config ────────────────────────────────────────────────────────────
@@ -763,7 +768,7 @@ with tab_equations:
 with tab_download:
     st.markdown('<div class="card-title">DATA_EXPORT</div>', unsafe_allow_html=True)
 
-    dl1, dl2, dl3 = st.columns(3, gap="large")
+    dl1, dl2, dl3, dl4 = st.columns(4, gap="large")
 
     # ── PNG ──────────────────────────────────────────────────────────────────
     with dl1:
@@ -863,6 +868,57 @@ with tab_download:
                 file_name=f"{img_name}_functions.tex",
                 mime="text/plain",
                 key="dl_tex",
+            )
+        else:
+            st.markdown('<div class="info-box" style="font-size:0.8rem;">[ AWAITING_PIPELINE ]</div>', unsafe_allow_html=True)
+
+    # ── Desmos ───────────────────────────────────────────────────────────────
+    with dl4:
+        st.markdown("""
+        <div class="dl-card">
+            <div class="dl-icon">[ DSM ]</div>
+            <div class="dl-title">DESMOS_GRAPH</div>
+            <div class="dl-desc">Interactive graph + JSON expression list for Desmos.</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        if results:
+            _method_key_dsm = "fourier" if "Fourier" in method else "piecewise"
+            _n_terms_dsm = n_terms if _method_key_dsm == "fourier" else 80
+
+            desmos_exprs = build_desmos_expression_list(
+                results,
+                method=_method_key_dsm,
+                n_terms=_n_terms_dsm,
+                max_contours=min(len(results), 60),
+            )
+
+            desmos_json = expression_list_to_json(desmos_exprs)
+            st.download_button(
+                "[ DL_DESMOS_JSON ]",
+                data=desmos_json.encode("utf-8"),
+                file_name=f"{img_name}_desmos.json",
+                mime="application/json",
+                key="dl_dsm_json",
+            )
+
+            desmos_html_str = build_desmos_html(
+                desmos_exprs,
+                title=f"retrograde — {img_name}",
+            )
+            st.download_button(
+                "[ DL_DESMOS_HTML ]",
+                data=desmos_html_str.encode("utf-8"),
+                file_name=f"{img_name}_desmos.html",
+                mime="text/html",
+                key="dl_dsm_html",
+            )
+
+            st.markdown(
+                f'<div class="info-box" style="font-size:0.75rem;">'
+                f'[ EXPR_COUNT ] {len(desmos_exprs)} expressions · '
+                f'{min(len(results), 60)} contours</div>',
+                unsafe_allow_html=True,
             )
         else:
             st.markdown('<div class="info-box" style="font-size:0.8rem;">[ AWAITING_PIPELINE ]</div>', unsafe_allow_html=True)
