@@ -1,212 +1,87 @@
-# Image-to-Function Renderer
+# retrograde
 
-> Convert any image into a set of **mathematical functions** whose plot reproduces the image —
-> Fourier series (animated epicycles) or piecewise cubic splines — with symbolic LaTeX output.
+[![CI](https://github.com/krishnatoshniwwal/retrograde/actions/workflows/ci.yml/badge.svg)](https://github.com/krishnatoshniwwal/retrograde/actions)
 
-[![CI](https://github.com/YOUR_USERNAME/retrograde/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_USERNAME/retrograde/actions)
+**Retrograde turns any image into the mathematics that draws it.**
 
----
-
-## What This Does
-
-This project takes a raster image (portrait, drawing, etc.) and:
-
-1. **Detects edges** using Canny edge detection
-2. **Extracts contours** — ordered sequences of (x, y) points tracing each outline
-3. **Fits mathematical functions** to each contour using one of two methods:
-   - **Fourier / Epicycles**: Decomposes the contour into rotating circles via the DFT.
-     The sum of N rotating circles traces the original path with increasing accuracy.
-   - **Piecewise Splines**: Fits cubic spline segments that interpolate the contour points,
-     producing a "giant piecewise function" that traces the shape.
-4. **Reconstructs and renders** the image from pure mathematics
-5. **Animates** the epicycle construction in real time (GIF/MP4)
-6. **Exports symbolic LaTeX** — the actual equations that draw the image
+Upload a photo or sketch. The app traces the outlines of your image, then figures out a set of equations — real, symbolic, exportable equations — that can reproduce those outlines from scratch. You end up with the actual math behind the picture.
 
 ---
 
-## Math Background
+## The core idea
 
-### Fourier / Epicycle Method
+When you look at any drawing, you're really looking at a collection of curves. Retrograde asks: *what function would you have to plot to get this curve?*
 
-Each contour point (x_k, y_k) is encoded as a complex number z_k = x_k + i·y_k.
-The DFT decomposes the discrete signal into N rotating phasors:
+There are two answers it can give you:
 
-```
-Z_n = Σ_{k=0}^{N-1}  z_k · e^{-2πi·n·k/N}
-```
+**Fourier series (the spinning circles method)**
 
-Keeping the M largest-amplitude terms gives an M-epicycle approximation:
+Imagine you're drawing a shape with a pen attached to the edge of a spinning wheel, which is itself on the edge of another spinning wheel, which is on another, and so on. If you pick the right sizes and speeds for those wheels, the tip of the pen traces any shape you want. This is called an epicycle construction — the same idea that ancient astronomers used to model planetary motion.
 
-```
-z(t) ≈ Σ_{n ∈ top-M}  (|Z_n|/N) · e^{i·(n·t + arg Z_n)}
-```
-
-More terms → higher fidelity. A single rotating circle reproduces a circle exactly.
-
-### Piecewise Spline Method
-
-Points are parameterised by arc length t ∈ [0, 1].
-Two independent cubic splines x(t) and y(t) interpolate all contour points.
-Each spline piece over interval [t_k, t_{k+1}] is:
+Retrograde decomposes your image outline into exactly these spinning circles using a mathematical operation called the Discrete Fourier Transform. The result is an equation like:
 
 ```
-x(t) = a + b(t-tₖ) + c(t-tₖ)² + d(t-tₖ)³
+z(t) ≈ 3.2·e^(it) + 1.7·e^(3it) + 0.9·e^(-2it) + ...
 ```
 
-The union of all pieces forms the "giant piecewise function".
+Each term is one spinning circle. More terms means a more faithful reproduction of your image.
+
+**Piecewise cubic splines (the smooth curve method)**
+
+The second method fits smooth polynomial curves through the outline points, one segment at a time. Each segment is described by four numbers, making the full curve a "giant piecewise function" — a different cubic equation for each small stretch of the outline.
+
+Both methods spit out real equations that you can copy, graph, or print.
 
 ---
 
-## Pipeline
+## What you can do with it
 
-```
-Image file
-  ↓ load_image + resize + denoise
-Preprocessed gray image
-  ↓ Canny edge detection
-Binary edge map
-  ↓ findContours + approxPolyDP
-Contour point sequences
-  ↓ DFT (numpy.fft) or CubicSpline (scipy)
-Fourier coeffs / Spline segments
-  ↓ SymPy symbolic conversion
-LaTeX expressions
-  ↓ matplotlib / animation
-Static PNG + Animated GIF + .tex file
-```
+**See the reconstruction live** — adjust how many terms/curves to use and watch the image appear from nothing, term by term.
+
+**Watch the wheels spin** — an animated GIF shows the epicycle mechanism in motion: the rotating circles building up the outline in real time.
+
+**Read the equations** — every tab has an "Explain the math" panel that walks through what the equations on screen actually mean, using the numbers from your specific image.
+
+**Export everything:**
+- PNG of the reconstruction
+- Animated GIF of the epicycles
+- LaTeX `.tex` file and compiled PDF with all the equations
+- A Desmos graph (JSON or self-contained HTML) you can open in any browser and interact with
+- A print-ready SVG/PDF poster — clean white background, equation footer, plotter-ready
 
 ---
 
-## Project Structure
-
-```
-retrograde/
-  ├── src/
-  │   ├── preprocessing.py    # load, resize, denoise, Canny
-  │   ├── contours.py         # findContours, Douglas-Peucker, complex conversion
-  │   ├── fourier.py          # DFT, epicycle coefficients, reconstruction
-  │   ├── piecewise.py        # CubicSpline fitting, segment extraction
-  │   ├── symbolic.py         # SymPy expressions, LaTeX strings
-  │   ├── render.py           # matplotlib static + animation (GIF/MP4)
-  │   └── latex_export.py     # .tex document builder + pdflatex runner
-  ├── tests/                  # pytest unit tests (math correctness)
-  ├── app.py                  # Streamlit interactive UI
-  ├── config/default.yaml     # pipeline parameters
-  ├── examples/               # sample images
-  ├── .github/workflows/ci.yml
-  ├── requirements.txt
-  └── README.md
-```
-
----
-
-## Quick Start
-
-### 1. Install dependencies
+## Running it
 
 ```bash
 pip install -r requirements.txt
-```
-
-> **Note:** Requires Python ≥ 3.10. OpenCV may need system libraries on Linux:
-> `sudo apt-get install libgl1-mesa-glx`
-
-### 2. Run the interactive UI
-
-```bash
 streamlit run app.py
 ```
 
-Upload any image (or use the built-in demo), adjust parameters, and see the reconstruction live.
+Then open your browser. Upload an image (or use the webcam, or the built-in demo), pick Fourier or spline mode, and drag the sliders.
 
-### 3. Use as a library
-
-```python
-from src.preprocessing import preprocess
-from src.contours import get_all_contours
-from src.fourier import dft_pipeline
-from src.render import plot_reconstruction, fig_to_png_bytes
-import matplotlib.pyplot as plt
-
-# Process an image
-edges, original = preprocess("examples/face.png")
-contours = get_all_contours(edges)
-
-# Fit Fourier representation
-results = [dft_pipeline(c, config={"fourier": {"n_terms": 100}}) for c in contours]
-paths = [r["path"] for r in results]
-
-# Render
-fig = plot_reconstruction(paths, config={"render": {"theme": "dark", "colormap": "plasma"}})
-fig.savefig("output/reconstruction.png", dpi=150, bbox_inches="tight")
-plt.close(fig)
-```
-
-### 4. Run tests
-
-```bash
-pytest tests/ -v
-```
-
-### 5. Export to Desmos
-
-After processing an image in the Streamlit UI, go to the **Downloads** tab and find the `[ DSM ]` card:
-
-- **`[ DL_DESMOS_JSON ]`** — download a JSON expression list and import it into [desmos.com/calculator](https://desmos.com/calculator) via the expression panel's import dialog.
-- **`[ DL_DESMOS_HTML ]`** — download a self-contained HTML file. Open it in any browser to get a fully interactive, zoomable Desmos graph with all equations loaded and a per-contour color legend — no login needed.
+**Requirements:** Python ≥ 3.10.
 
 ---
 
-## Configuration
+## How it works under the hood
 
-All parameters are controlled via `config/default.yaml`:
-
-```yaml
-image:
-  max_dim: 512          # resize longest side to this (pixels)
-  denoise_kernel: 5     # Gaussian blur kernel (odd integer)
-edge:
-  canny_low: 50         # Canny lower threshold
-  canny_high: 150       # Canny upper threshold
-contour:
-  min_length: 20        # discard short contours
-  epsilon_fraction: 0.002  # Douglas-Peucker tolerance
-fourier:
-  n_terms: 100          # epicycles to keep
-spline:
-  n_knots: 50           # knots per contour
-render:
-  theme: dark           # "dark" or "light"
-  colormap: plasma      # matplotlib colormap
+```
+Your image
+  → edge detection (finds outlines)
+  → contour extraction (traces each outline as a list of points)
+  → Fourier transform or spline fitting (turns points into equations)
+  → reconstruction (plots the equations back into an image)
+  → export (LaTeX, GIF, Desmos, SVG)
 ```
 
----
-
-## Feature Tiers
-
-| Tier | Feature | Status |
-|------|---------|--------|
-| 0 | Edge detection, piecewise splines, static plot | ✅ |
-| 1 | Fourier / epicycles, animation, SymPy LaTeX | ✅ |
-| 2 | Gradient rendering, themes, unit tests, YAML config, CI | ✅ |
-| 3 | Streamlit UI, fidelity slider, live preview, downloads | ✅ |
-| 3.5 | Desmos export, neon rendering | ✅ |
-| 4 | Error curves, web deployment, video input | 🔜 |
+The whole pipeline is modular — each step is a separate Python module with its own tests.
 
 ---
 
-## Tech Stack
+## Tech
 
-| Purpose | Library |
-|---|---|
-| Image I/O & CV | opencv-python, Pillow |
-| Numerics | numpy, scipy |
-| Symbolic math | sympy |
-| Plotting / animation | matplotlib |
-| LaTeX generation | manual .tex + pdflatex |
-| Testing | pytest |
-| UI | streamlit |
-| CI | GitHub Actions |
+Python · NumPy · SciPy · OpenCV · SymPy · Matplotlib · Streamlit
 
 ---
 
