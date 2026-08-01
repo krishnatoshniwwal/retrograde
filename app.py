@@ -1,15 +1,18 @@
 """
 app.py — Streamlit UI for the Image-to-Function Renderer.
 
-Features (Tier 3):
-  - Image upload (or built-in examples)
+Features (Tier 3 baseline + Tier B additions):
+  - Image upload, webcam capture, or built-in examples  [B-1]
   - Method selector: Fourier epicycles vs Piecewise splines
   - Fidelity / complexity slider
   - Canny edge threshold controls
   - Live static reconstruction preview
+  - Progressive reconstruction scrubber with RMS error  [B-2]
+  - "Explain the math" panel per tab (static tier)      [B-3]
   - Animated epicycle GIF download
   - LaTeX .tex file download + direct PDF generation
-  - Futuristic / Cyberpunk aesthetic (no emojis)
+  - Print-ready SVG + PDF poster export                  [B-4]
+  - Desmos HTML / JSON export
 """
 
 from __future__ import annotations
@@ -28,7 +31,7 @@ import yaml
 # ── Project modules ────────────────────────────────────────────────────────
 from src.preprocessing import preprocess_array
 from src.contours import get_all_contours
-from src.fourier import dft_pipeline
+from src.fourier import dft_pipeline, reconstruct_path, compute_rms_error
 from src.piecewise import spline_pipeline
 from src.symbolic import fourier_to_latex_lines, spline_to_latex_lines
 from src.render import (
@@ -36,12 +39,20 @@ from src.render import (
     fig_to_png_bytes,
     animate_epicycles,
     animation_to_gif_bytes,
+    plot_poster,
+    fig_to_svg_bytes,
+    fig_to_pdf_bytes,
 )
 from src.latex_export import build_latex_document, generate_pdf_bytes
 from src.desmos_export import (
     build_desmos_expression_list,
     expression_list_to_desmos_state,
     build_desmos_html,
+)
+from src.explainer import (
+    explain_reconstruction,
+    explain_epicycles,
+    explain_equations,
 )
 
 
@@ -129,6 +140,26 @@ html, body, [class*="css"] {
     background: #fffbeb; border-left: 3px solid #d97706;
     padding: 0.8rem 1rem; margin: 0.6rem 0; font-size: 0.85rem;
     color: #92400e; border-radius: 0 4px 4px 0;
+}
+.explain-box {
+    background: #faf5ff; border-left: 3px solid #7c3aed;
+    padding: 1rem 1.2rem; margin: 0.6rem 0; font-size: 0.88rem;
+    color: #3b0764; line-height: 1.7; border-radius: 0 4px 4px 0;
+}
+.scrubber-box {
+    background: #f0f9ff; border: 1px solid #bae6fd;
+    border-radius: 8px; padding: 1rem 1.2rem; margin: 0.8rem 0;
+}
+.rms-badge {
+    display: inline-block; background: #1e40af; color: #dbeafe;
+    font-family: 'Share Tech Mono', monospace; font-size: 0.9rem;
+    padding: 4px 14px; border-radius: 4px; font-weight: 700;
+    letter-spacing: 0.06em;
+}
+.webcam-note {
+    background: #f0fdf4; border: 1px solid #86efac;
+    border-radius: 6px; padding: 0.7rem 1rem; font-size: 0.8rem;
+    color: #15803d; margin-bottom: 0.5rem;
 }
 
 .dl-card {
@@ -280,9 +311,88 @@ def run_pipeline(
     }
 
 
+# ── Scrubber helper — reconstruct at k terms (fast, cached) ───────────────
+@st.cache_data(show_spinner=False)
+def _render_at_k_terms(
+    coeffs_tuple: tuple,   # hashable: tuple of (amp, phase, freq, real, imag) per coeff per contour
+    k: int,
+    config_render: tuple,  # hashable: (colormap, line_width, theme)
+) -> bytes:
+    """Reconstruct all contours using only the top-k Fourier terms and return PNG bytes.
+
+    This is intentionally separate from run_pipeline so that dragging the
+    scrubber slider does NOT re-run edge detection — only the cheap path
+    reconstruction is repeated.
+    """
+    from src.fourier import EpicycleCoeff
+
+    colormap, line_width, theme = config_render
+    config = {"render": {"colormap": colormap, "line_width": line_width,
+                          "theme": theme, "figsize": [8, 8]}}
+
+    paths_k = []
+    for contour_coeffs_raw in coeffs_tuple:
+        coeffs = [
+            EpicycleCoeff(freq=f, amplitude=a, phase=p, real=r, imag=im)
+            for (a, p, f, r, im) in contour_coeffs_raw
+        ]
+        k_clamped = min(k, len(coeffs))
+        path = reconstruct_path(coeffs, n_terms=k_clamped)
+        paths_k.append(path)
+
+    fig = plot_reconstruction(paths_k, config=config, title=f"{k} terms")
+    png = fig_to_png_bytes(fig, dpi=120)
+    plt.close(fig)
+    return png
+
+
+def _coeffs_to_hashable(results: list[dict]) -> tuple:
+    """Convert results list into a hashable tuple for st.cache_data."""
+    out = []
+    for res in results:
+        coeffs = res.get("coeffs", [])
+        out.append(tuple((c.amplitude, c.phase, c.freq, c.real, c.imag) for c in coeffs))
+    return tuple(out)
+
+
+def _paths_to_hashable(paths: list[np.ndarray]) -> tuple:
+    """Convert a list of numpy path arrays to a hashable key for st.cache_data."""
+    return tuple(p.tobytes() for p in paths)
+
+
+@st.cache_data(show_spinner=False)
+def _build_poster_bytes(
+    paths_key: tuple,          # from _paths_to_hashable — used only as cache key
+    paths_data: tuple,         # tuple of (N,2) arrays serialised as bytes
+    title: str,
+    subtitle: str,
+    eq_snippet: str,
+    colormap: str,
+    line_width: float,
+) -> tuple[bytes, bytes]:
+    """Render the print-ready poster and return (svg_bytes, pdf_bytes).
+
+    Cached so that clicking a download button (which triggers a Streamlit re-run)
+    does NOT re-render the 12x14 figure — only runs again when paths or settings
+    actually change.
+    """
+    # Reconstruct numpy arrays from serialised bytes
+    paths = [np.frombuffer(b, dtype=np.float64).reshape(-1, 2) for b in paths_data]
+    config = {"render": {"colormap": colormap, "line_width": line_width}}
+    fig = plot_poster(
+        paths=paths,
+        title=title,
+        subtitle=subtitle,
+        equation_snippet=eq_snippet,
+        config=config,
+    )
+    svg = fig_to_svg_bytes(fig)
+    pdf = fig_to_pdf_bytes(fig)
+    plt.close(fig)
+    return svg, pdf
+
+
 # ── Spline pipeline — always used for Desmos export ───────────────────────
-# Splines are piecewise polynomials: Desmos evaluates them exactly with no
-# sampling artefacts, regardless of which method the user selected in the UI.
 @st.cache_data(show_spinner=False)
 def run_spline_for_desmos(
     img_bytes: bytes,
@@ -311,7 +421,6 @@ def run_spline_for_desmos(
     return results
 
 
-
 # ══════════════════════════════════════════════════════════════════════════════
 # SIDEBAR
 # ══════════════════════════════════════════════════════════════════════════════
@@ -319,17 +428,39 @@ with st.sidebar:
     st.markdown("""
     <div style="text-align:center; padding: 0.5rem 0 1.2rem;">
         <div style="font-family:'Share Tech Mono', monospace; font-size:2.5rem; color:#1a1a2e; margin-bottom:4px; letter-spacing:0.05em;">RETROGRADE</div>
-        <div style="font-size:0.7rem; color:#e11d48; font-weight:700; letter-spacing:0.2em; text-transform:uppercase; margin-top:2px;">SYS // V1.0</div>
+        <div style="font-size:0.7rem; color:#e11d48; font-weight:700; letter-spacing:0.2em; text-transform:uppercase; margin-top:2px;">SYS // V2.0</div>
     </div>
     """, unsafe_allow_html=True)
 
-    # ── INPUT ──
+    # ── INPUT ──────────────────────────────────────────────────────────────
     st.markdown('<div class="sidebar-section">INPUT_SOURCE</div>', unsafe_allow_html=True)
-    uploaded = st.file_uploader(
-        "Upload an image", type=["png", "jpg", "jpeg", "bmp", "webp"],
+
+    input_mode = st.radio(
+        "Input source",
+        ["[ UPLOAD ]", "[ WEBCAM ]", "[ DEMO DATA ]"],
         label_visibility="collapsed",
     )
-    use_sample = st.checkbox("[ USE DEMO DATA ]", value=(uploaded is None))
+
+    uploaded      = None
+    webcam_image  = None
+
+    if input_mode == "[ UPLOAD ]":
+        uploaded = st.file_uploader(
+            "Upload an image", type=["png", "jpg", "jpeg", "bmp", "webp"],
+            label_visibility="collapsed",
+        )
+
+    elif input_mode == "[ WEBCAM ]":
+        st.markdown(
+            '<div class="webcam-note">Point the camera at a high-contrast subject. '
+            'Bold outlines and good lighting produce the best reconstructions.</div>',
+            unsafe_allow_html=True,
+        )
+        webcam_image = st.camera_input(
+            "Capture frame",
+            label_visibility="collapsed",
+            key="webcam_capture",
+        )
 
     # ── METHOD ──
     st.markdown('<div class="sidebar-section">PROCESSING_METHOD</div>', unsafe_allow_html=True)
@@ -369,12 +500,7 @@ with st.sidebar:
         ["plasma", "viridis", "inferno", "magma", "cool", "spring", "turbo", "rainbow"],
     )
 
-    st.markdown("""
-    <div style="margin-top:2rem; padding: 12px; background:rgba(0,240,255,0.05);
-         border:1px solid #00f0ff; text-align:center;">
-        <div style="font-size:0.68rem; color:#00f0ff; font-weight:700; letter-spacing:0.1em;">NUMPY // SCIPY // SYMPY</div>
-    </div>
-    """, unsafe_allow_html=True)
+
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -401,26 +527,43 @@ st.markdown("""
 st.markdown("<hr style='margin: 1rem 0;'>", unsafe_allow_html=True)
 
 # ── Resolve input image ──
-if uploaded is not None:
-    img_bytes = uploaded.read()
-    img_pil = Image.open(io.BytesIO(img_bytes)).convert("RGB")
-    img_name = Path(uploaded.name).stem
-elif use_sample:
+if input_mode == "[ UPLOAD ]":
+    if uploaded is not None:
+        img_bytes = uploaded.read()
+        img_pil   = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+        img_name  = Path(uploaded.name).stem
+    else:
+        st.markdown("""
+        <div style="text-align:center; padding:3rem 1rem; color:#a0a0a0; border: 1px dashed rgba(79,70,229,0.4); margin: 2rem; border-radius:8px;">
+            <div style="font-family:'Share Tech Mono', monospace; font-size:3rem; color:#4f46e5; margin-bottom:1rem;">[ AWAITING_INPUT ]</div>
+            <div style="font-size:1.1rem; font-weight:700; color:#1a1a2e; text-transform:uppercase;">Upload an image to begin</div>
+            <div style="font-size:0.85rem; margin-top:0.5rem; letter-spacing:0.1em; color:#94a3b8;">Supports PNG · JPG · BMP · WebP</div>
+        </div>
+        """, unsafe_allow_html=True)
+        st.stop()
+
+elif input_mode == "[ WEBCAM ]":
+    if webcam_image is not None:
+        img_bytes = webcam_image.read()
+        img_pil   = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+        img_name  = "webcam_capture"
+    else:
+        st.markdown("""
+        <div style="text-align:center; padding:3rem 1rem; color:#a0a0a0; border: 1px dashed rgba(22,163,74,0.4); margin: 2rem; border-radius:8px;">
+            <div style="font-family:'Share Tech Mono', monospace; font-size:3rem; color:#16a34a; margin-bottom:1rem;">[ WEBCAM_READY ]</div>
+            <div style="font-size:1.1rem; font-weight:700; color:#1a1a2e; text-transform:uppercase;">Click the camera button in the sidebar</div>
+            <div style="font-size:0.85rem; margin-top:0.5rem; letter-spacing:0.1em; color:#94a3b8;">Position subject, then capture a frame</div>
+        </div>
+        """, unsafe_allow_html=True)
+        st.stop()
+
+else:  # DEMO DATA
     sample_arr = generate_sample_image()
     buf = io.BytesIO()
     Image.fromarray(sample_arr).save(buf, format="PNG")
     img_bytes = buf.getvalue()
-    img_pil = Image.fromarray(sample_arr)
-    img_name = "demo_star"
-else:
-    st.markdown("""
-    <div style="text-align:center; padding:3rem 1rem; color:#a0a0a0; border: 1px dashed rgba(0, 240, 255, 0.5); margin: 2rem;">
-        <div style="font-family:'Share Tech Mono', monospace; font-size:3rem; color:#ff003c; margin-bottom:1rem;">[ AWAITING_INPUT ]</div>
-        <div style="font-size:1.1rem; font-weight:700; color:#00f0ff; text-transform:uppercase;">Upload image or enable demo mode</div>
-        <div style="font-size:0.85rem; margin-top:0.5rem; letter-spacing:0.1em;">Configure parameters in sidebar</div>
-    </div>
-    """, unsafe_allow_html=True)
-    st.stop()
+    img_pil   = Image.fromarray(sample_arr)
+    img_name  = "demo_star"
 
 # ── Run pipeline ──
 with st.spinner(""):
@@ -438,13 +581,14 @@ with st.spinner(""):
     )
     elapsed = time.time() - t0
 
-results   = pipeline_out["results"]
-paths     = pipeline_out["paths"]
-config    = pipeline_out["config"]
+results    = pipeline_out["results"]
+paths      = pipeline_out["paths"]
+config     = pipeline_out["config"]
 n_contours = pipeline_out["n_contours"]
 
 # ── Stat cards ──
 method_short = "FOURIER" if "Fourier" in method else "SPLINE"
+input_short  = {"[ UPLOAD ]": "FILE", "[ WEBCAM ]": "CAM", "[ DEMO DATA ]": "DEMO"}[input_mode]
 st.markdown(f"""
 <div class="stat-row">
     <div class="stat-card">
@@ -461,6 +605,11 @@ st.markdown(f"""
         <div class="stat-icon">[M]</div>
         <div class="stat-value">{method_short}</div>
         <div class="stat-label">ALGORITHM</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon">[S]</div>
+        <div class="stat-value">{input_short}</div>
+        <div class="stat-label">INPUT SOURCE</div>
     </div>
     <div class="stat-card">
         <div class="stat-icon">[T]</div>
@@ -505,13 +654,74 @@ with tab_static:
         else:
             st.markdown("""
             <div style="display:flex; flex-direction:column; align-items:center;
-                 justify-content:center; height:300px; color:#ff003c; text-align:center;
-                 border: 1px dashed rgba(255, 0, 60, 0.5);">
+                 justify-content:center; height:300px; color:#e11d48; text-align:center;
+                 border: 1px dashed rgba(225, 29, 72, 0.5); border-radius:8px;">
                 <div style="font-family:'Share Tech Mono', monospace; font-size:2.5rem; margin-bottom:0.8rem;">[ ERROR ]</div>
                 <div style="font-weight:700; letter-spacing:0.1em; text-transform:uppercase;">No contours detected</div>
                 <div style="font-size:0.85rem; margin-top:0.4rem; color:#a0a0a0;">Adjust Canny thresholds in side panel</div>
             </div>
             """, unsafe_allow_html=True)
+
+    # ── B-2: Progressive Reconstruction Scrubber ─────────────────────────
+    if paths and method == "Fourier (Epicycles)" and results:
+        st.markdown("<hr style='margin: 1.5rem 0 1rem;'>", unsafe_allow_html=True)
+        st.markdown('<div class="card-title">PROGRESSIVE_SCRUBBER</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="info-box">Drag the slider to watch the image resolve from a coarse blob '
+            'into its full form as more Fourier terms are added. '
+            'The RMS error measures how far this approximation is from the full reconstruction.</div>',
+            unsafe_allow_html=True,
+        )
+
+        scr_col1, scr_col2 = st.columns([4, 1], gap="medium")
+        with scr_col1:
+            scrub_k = st.slider(
+                "TERMS",
+                min_value=1,
+                max_value=n_terms,
+                value=min(10, n_terms),
+                step=1,
+                key="scrubber_k",
+                label_visibility="collapsed",
+            )
+        with scr_col2:
+            # Compute RMS vs full reconstruction for first contour
+            if scrub_k < n_terms:
+                from src.fourier import EpicycleCoeff
+                c0 = results[0]["coeffs"]
+                path_k    = reconstruct_path(c0, n_terms=scrub_k)
+                path_full = results[0]["path"]
+                rms = compute_rms_error(path_k, path_full)
+                st.markdown(
+                    f'<br><span class="rms-badge">RMS: {rms:.2f} px</span>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(
+                    '<br><span class="rms-badge">RMS: 0.00 px</span>',
+                    unsafe_allow_html=True,
+                )
+
+        # Render scrubbed reconstruction
+        coeffs_hashable = _coeffs_to_hashable(results)
+        config_render   = (colormap, config["render"]["line_width"], theme)
+        scrub_png = _render_at_k_terms(coeffs_hashable, scrub_k, config_render)
+        st.image(scrub_png, caption=f"Reconstruction at {scrub_k} / {n_terms} terms", use_container_width=True)
+
+    # ── B-3: Explain the Math — Reconstruction tab ───────────────────────
+    with st.expander("[ EXPLAIN THE MATH ]  — Reconstruction & Contours"):
+        explanation_text = explain_reconstruction(
+            n_contours=n_contours,
+            method=method,
+            n_terms=n_terms,
+            colormap=colormap,
+            canny_low=canny_low,
+            canny_high=canny_high,
+        )
+        st.markdown(
+            f'<div class="explain-box">{explanation_text}</div>',
+            unsafe_allow_html=True,
+        )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -520,8 +730,8 @@ with tab_static:
 with tab_anim:
     if method != "Fourier (Epicycles)":
         st.markdown("""
-        <div style="text-align:center; padding:3rem 1rem; color:#a0a0a0; border: 1px dashed rgba(255, 255, 0, 0.5);">
-            <div style="font-family:'Share Tech Mono', monospace; font-size:2.5rem; color:#ffff00; margin-bottom:0.8rem;">[ MODE_LOCKED ]</div>
+        <div style="text-align:center; padding:3rem 1rem; color:#a0a0a0; border: 1px dashed rgba(234,179,8,0.5); border-radius:8px;">
+            <div style="font-family:'Share Tech Mono', monospace; font-size:2.5rem; color:#ca8a04; margin-bottom:0.8rem;">[ MODE_LOCKED ]</div>
             <div style="font-size:1rem; font-weight:700; text-transform:uppercase;">Switch to Fourier mode to enable kinetic animation</div>
         </div>
         """, unsafe_allow_html=True)
@@ -578,6 +788,16 @@ with tab_anim:
                     unsafe_allow_html=True,
                 )
 
+    # ── B-3: Explain the Math — Epicycles tab ────────────────────────────
+    if method == "Fourier (Epicycles)" and results:
+        with st.expander("[ EXPLAIN THE MATH ]  — Fourier Series & Epicycles"):
+            coeffs_list = [r["coeffs"] for r in results]
+            explanation_text = explain_epicycles(coeffs_list, n_terms=n_terms)
+            st.markdown(
+                f'<div class="explain-box">{explanation_text}</div>',
+                unsafe_allow_html=True,
+            )
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 3 — Symbolic Equations
@@ -616,13 +836,32 @@ with tab_equations:
                 for line in lines:
                     st.latex(line)
 
+    # ── B-3: Explain the Math — Equations tab ────────────────────────────
+    if results:
+        with st.expander("[ EXPLAIN THE MATH ]  — Reading the Equations"):
+            eq_explain_idx = st.number_input(
+                "Contour to explain", min_value=1,
+                max_value=len(results), value=1, step=1, key="eq_explain_idx",
+            ) - 1
+            explanation_text = explain_equations(
+                results=results,
+                method=method,
+                contour_idx=int(eq_explain_idx),
+                term_idx=0,
+            )
+            st.markdown(
+                f'<div class="explain-box">{explanation_text}</div>',
+                unsafe_allow_html=True,
+            )
+
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 4 — Downloads
+# TAB 4 — Downloads / Export
 # ══════════════════════════════════════════════════════════════════════════════
 with tab_download:
     st.markdown('<div class="card-title">DATA_EXPORT</div>', unsafe_allow_html=True)
 
+    # ── Row 1: four main export cards ────────────────────────────────────────
     dl1, dl2, dl3, dl4 = st.columns(4, gap="large")
 
     # ── PNG ──────────────────────────────────────────────────────────────────
@@ -630,8 +869,8 @@ with tab_download:
         st.markdown("""
         <div class="dl-card">
             <div class="dl-icon">[ IMG ]</div>
-            <div class="dl-title">STATIC_RENDER.PNG</div>
-            <div class="dl-desc">High-res rendering of trajectory map.</div>
+            <div class="dl-title">STATIC PNG</div>
+            <div class="dl-desc">High-res reconstruction image.</div>
         </div>
         """, unsafe_allow_html=True)
         if paths:
@@ -639,7 +878,7 @@ with tab_download:
             png_bytes = fig_to_png_bytes(fig, dpi=200)
             plt.close(fig)
             st.download_button(
-                "[ DL_PNG ]",
+                "Download PNG",
                 data=png_bytes,
                 file_name=f"{img_name}_reconstruction.png",
                 mime="image/png",
@@ -653,14 +892,14 @@ with tab_download:
         st.markdown("""
         <div class="dl-card">
             <div class="dl-icon">[ KIN ]</div>
-            <div class="dl-title">KINETICS.GIF</div>
-            <div class="dl-desc">Animated loop of epicycle mechanism.</div>
+            <div class="dl-title">KINETICS GIF</div>
+            <div class="dl-desc">Animated epicycle loop.</div>
         </div>
         """, unsafe_allow_html=True)
         gif_bytes = st.session_state.get("gif_bytes")
         if gif_bytes:
             st.download_button(
-                "[ DL_GIF ]",
+                "Download GIF",
                 data=gif_bytes,
                 file_name=f"{img_name}_epicycles.gif",
                 mime="image/gif",
@@ -668,7 +907,7 @@ with tab_download:
             )
         else:
             st.markdown(
-                '<div class="info-box" style="font-size:0.8rem;">[ REQUIRES_GENERATION ] Render in EPICYCLES tab.</div>',
+                '<div class="info-box" style="font-size:0.8rem;">Generate in Epicycles tab first.</div>',
                 unsafe_allow_html=True,
             )
 
@@ -677,15 +916,15 @@ with tab_download:
         st.markdown("""
         <div class="dl-card">
             <div class="dl-icon">[ SYM ]</div>
-            <div class="dl-title">SYMBOLIC_DATA</div>
-            <div class="dl-desc">Raw LaTeX equations and compiled PDF payload.</div>
+            <div class="dl-title">SYMBOLIC DATA</div>
+            <div class="dl-desc">LaTeX equations &amp; compiled PDF.</div>
         </div>
         """, unsafe_allow_html=True)
 
         if results:
             _method_key = "fourier" if "Fourier" in method else "piecewise"
 
-            if st.button("[ RENDER_PDF ]", key="gen_pdf"):
+            if st.button("Build PDF", key="gen_pdf"):
                 with st.spinner("Building payload..."):
                     pdf_data = generate_pdf_bytes(
                         results,
@@ -703,7 +942,7 @@ with tab_download:
             pdf_data = st.session_state.get("pdf_bytes")
             if pdf_data:
                 st.download_button(
-                    "[ DL_PDF ]",
+                    "Download PDF",
                     data=pdf_data,
                     file_name=f"{img_name}_functions.pdf",
                     mime="application/pdf",
@@ -718,7 +957,7 @@ with tab_download:
                 max_contours=15,
             )
             st.download_button(
-                "[ DL_TEX ]",
+                "Download .tex",
                 data=tex_content.encode("utf-8"),
                 file_name=f"{img_name}_functions.tex",
                 mime="text/plain",
@@ -728,14 +967,12 @@ with tab_download:
             st.markdown('<div class="info-box" style="font-size:0.8rem;">[ AWAITING_PIPELINE ]</div>', unsafe_allow_html=True)
 
     # ── Desmos ───────────────────────────────────────────────────────────────
-    # ── Desmos ───────────────────────────────────────────────────────────────
-    # -- Desmos -------------------------------------------------------------------
     with dl4:
         st.markdown("""
         <div class="dl-card">
             <div class="dl-icon">[ DSM ]</div>
-            <div class="dl-title">DESMOS_GRAPH</div>
-            <div class="dl-desc">Spline-based export (polynomial curves, exact in Desmos).</div>
+            <div class="dl-title">DESMOS GRAPH</div>
+            <div class="dl-desc">Spline curves, exact in Desmos.</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -759,12 +996,12 @@ with tab_download:
 
                 desmos_state = expression_list_to_desmos_state(desmos_exprs)
                 st.download_button(
-                    "[ DL_DESMOS_STATE ]",
+                    "Desmos JSON",
                     data=desmos_state.encode("utf-8"),
                     file_name=f"{img_name}_desmos.json",
                     mime="application/json",
                     key="dl_dsm_json",
-                    help="desmos.com hamburger menu > Load Graph",
+                    help="desmos.com → hamburger menu → Load Graph",
                 )
 
                 desmos_html_str = build_desmos_html(
@@ -772,7 +1009,7 @@ with tab_download:
                     title=f"retrograde - {img_name}",
                 )
                 st.download_button(
-                    "[ DL_DESMOS_HTML ]",
+                    "Desmos HTML",
                     data=desmos_html_str.encode("utf-8"),
                     file_name=f"{img_name}_desmos.html",
                     mime="text/html",
@@ -782,14 +1019,73 @@ with tab_download:
                 seg_count = sum(len(r.get("segments", [])) for r in dsm_results)
                 st.markdown(
                     f'<div class="info-box" style="font-size:0.75rem;">'
-                    f'[ SPLINE ] {len(dsm_results)} contours | '
-                    f'{seg_count} segments | {len(desmos_exprs)} expressions</div>',
+                    f'{len(dsm_results)} contours · {seg_count} segments · {len(desmos_exprs)} expr</div>',
                     unsafe_allow_html=True,
                 )
             else:
                 st.markdown('<div class="info-box" style="font-size:0.8rem;">[ NO_CONTOURS ] Adjust edge thresholds.</div>', unsafe_allow_html=True)
         else:
             st.markdown('<div class="info-box" style="font-size:0.8rem;">[ AWAITING_PIPELINE ]</div>', unsafe_allow_html=True)
+
+    # ── Row 2: Print-ready poster (full-width card + two buttons side by side)
+    st.markdown("<div style='margin-top: 1.5rem;'></div>", unsafe_allow_html=True)
+    prt_card, prt_btns = st.columns([2, 3], gap="large")
+
+    with prt_card:
+        st.markdown("""
+        <div class="dl-card" style="height:100%;">
+            <div class="dl-icon">[ PRT ]</div>
+            <div class="dl-title">PRINT POSTER</div>
+            <div class="dl-desc">Clean vector poster — plotter / laser cutter / print-ready.
+            White background, bold title, gradient reconstruction, equation footer.
+            12×14 in · vector · SVG + PDF.</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with prt_btns:
+        if paths:
+            eq_snippet = ""
+            if method == "Fourier (Epicycles)" and results:
+                c = results[0]["coeffs"]
+                if c:
+                    eq_snippet = f"z(t) ≈ Σ {c[0].amplitude:.1f}·exp(i·{c[0].freq}t) + ..."
+            elif results:
+                eq_snippet = "x(t) = a₀ + a₁(t−t₀) + a₂(t−t₀)² + a₃(t−t₀)³"
+
+            _paths_key  = _paths_to_hashable(paths)
+            _paths_data = tuple(p.astype(np.float64).tobytes() for p in paths)
+            svg_bytes, pdf_poster_bytes = _build_poster_bytes(
+                paths_key  = _paths_key,
+                paths_data = _paths_data,
+                title      = "RETROGRADE",
+                subtitle   = f"{method_short} // {n_terms} terms // {n_contours} contours",
+                eq_snippet = eq_snippet,
+                colormap   = colormap,
+                line_width = config["render"]["line_width"],
+            )
+
+            st.markdown("<div style='margin-top: 2rem;'></div>", unsafe_allow_html=True)
+            btn_l, btn_r = st.columns(2, gap="medium")
+            with btn_l:
+                st.download_button(
+                    "Download SVG",
+                    data=svg_bytes,
+                    file_name=f"{img_name}_poster.svg",
+                    mime="image/svg+xml",
+                    key="dl_svg",
+                )
+            with btn_r:
+                st.download_button(
+                    "Download PDF",
+                    data=pdf_poster_bytes,
+                    file_name=f"{img_name}_poster.pdf",
+                    mime="application/pdf",
+                    key="dl_pdf_poster",
+                )
+        else:
+            st.markdown('<div class="info-box" style="font-size:0.8rem;">[ AWAITING_PIPELINE ]</div>', unsafe_allow_html=True)
+
+
 
 
 
@@ -802,7 +1098,7 @@ st.markdown("""
         [ RETROGRADE ] // IMG_TO_FUNC
     </div>
     <div style="font-size:0.75rem; color:#e11d48; font-family:'Share Tech Mono', monospace;">
-        SYS_ONLINE
+        SYS_ONLINE // TIER_B
     </div>
 </div>
 """, unsafe_allow_html=True)

@@ -459,3 +459,143 @@ def render_gallery(
     out_file = output_dir / "gallery.html"
     out_file.write_text(html, encoding="utf-8")
     return out_file
+
+
+# ---------------------------------------------------------------------------
+# Print-ready poster export (Tier B-4)
+# ---------------------------------------------------------------------------
+
+def plot_poster(
+    paths: list[np.ndarray],
+    title: str = "RETROGRADE",
+    subtitle: str = "Image → Mathematical Functions",
+    equation_snippet: str = "",
+    config: dict[str, Any] | None = None,
+) -> plt.Figure:
+    """Create a clean poster-layout figure suitable for SVG/PDF export.
+
+    The poster uses a white background, thick reconstruction lines, a bold
+    title, a subtitle, and an optional equation snippet in the bottom corner.
+    Designed to be printed or sent to a plotter/laser cutter as a single-stroke
+    SVG path.
+
+    Args:
+        paths:            List of (N, 2) reconstructed path arrays.
+        title:            Large title text (top of poster).
+        subtitle:         Smaller subtitle text below the title.
+        equation_snippet: Short equation string rendered in the bottom-left corner.
+        config:           Optional config dict (uses render.colormap, render.line_width).
+
+    Returns:
+        matplotlib Figure — call fig_to_svg_bytes or fig_to_pdf_bytes to export.
+    """
+    config = config or {}
+    cfg_r  = config.get("render", {})
+    colormap   = cfg_r.get("colormap", "plasma")
+    line_width = cfg_r.get("line_width", 1.8)
+
+    # Poster is always white-background, regardless of theme setting
+    fig = plt.figure(figsize=(12, 14))
+
+    # Layout: title area (top 12%), plot area (75%), footer (13%)
+    ax_title  = fig.add_axes([0.0, 0.88, 1.0, 0.12])
+    ax_plot   = fig.add_axes([0.04, 0.13, 0.92, 0.74])
+    ax_footer = fig.add_axes([0.0, 0.0,  1.0, 0.13])
+
+    # ── Background ──
+    fig.patch.set_facecolor("#ffffff")
+    for ax in (ax_title, ax_plot, ax_footer):
+        ax.set_facecolor("#ffffff")
+        ax.axis("off")
+
+    # ── Title area ──
+    ax_title.text(
+        0.5, 0.72, title,
+        ha="center", va="center", transform=ax_title.transAxes,
+        fontsize=36, fontweight="bold", color="#1a1a2e",
+        fontfamily="monospace",
+    )
+    ax_title.text(
+        0.5, 0.28, subtitle,
+        ha="center", va="center", transform=ax_title.transAxes,
+        fontsize=13, color="#64748b",
+    )
+    # Accent line under title
+    ax_title.axhline(y=0.02, color="#e11d48", linewidth=2.5, xmin=0.04, xmax=0.96)
+
+    # ── Reconstruction paths ──
+    ax_plot.set_aspect("equal")
+
+    flipped_paths = []
+    for p in paths:
+        if len(p) < 2:
+            continue
+        fp = p.copy()
+        fp[:, 1] = -fp[:, 1]
+        flipped_paths.append(fp)
+
+    if flipped_paths:
+        all_pts = np.vstack(flipped_paths)
+        x_min, y_min = all_pts.min(axis=0)
+        x_max, y_max = all_pts.max(axis=0)
+        margin = max(x_max - x_min, y_max - y_min) * 0.06 + 1.0
+        ax_plot.set_xlim(x_min - margin, x_max + margin)
+        ax_plot.set_ylim(y_min - margin, y_max + margin)
+
+        for fp in flipped_paths:
+            segs = _path_to_segments(fp)
+            colors = np.linspace(0, 1, len(segs))
+            lc = LineCollection(
+                segs, cmap=colormap, linewidth=line_width * 1.4, alpha=0.92,
+            )
+            lc.set_array(colors)
+            ax_plot.add_collection(lc)
+
+    # ── Footer ──
+    n_contours = len(flipped_paths)
+    footer_left = f"contours: {n_contours}  ·  colormap: {colormap}"
+    ax_footer.axhline(y=0.88, color="#e2e8f0", linewidth=1.0, xmin=0.04, xmax=0.96)
+    ax_footer.text(
+        0.04, 0.5, footer_left,
+        ha="left", va="center", transform=ax_footer.transAxes,
+        fontsize=9, color="#94a3b8", fontfamily="monospace",
+    )
+    if equation_snippet:
+        ax_footer.text(
+            0.96, 0.5, equation_snippet,
+            ha="right", va="center", transform=ax_footer.transAxes,
+            fontsize=8, color="#4f46e5", fontfamily="monospace",
+        )
+
+    return fig
+
+
+def fig_to_svg_bytes(fig: plt.Figure) -> bytes:
+    """Render a matplotlib figure to SVG bytes (vector, plotter-ready).
+
+    Args:
+        fig: matplotlib Figure.
+
+    Returns:
+        SVG bytes (UTF-8 encoded XML).
+    """
+    buf = io.BytesIO()
+    fig.savefig(buf, format="svg", bbox_inches="tight")
+    buf.seek(0)
+    return buf.read()
+
+
+def fig_to_pdf_bytes(fig: plt.Figure) -> bytes:
+    """Render a matplotlib figure to PDF bytes using the PDF backend.
+
+    Args:
+        fig: matplotlib Figure.
+
+    Returns:
+        PDF bytes.
+    """
+    buf = io.BytesIO()
+    fig.savefig(buf, format="pdf", bbox_inches="tight")
+    buf.seek(0)
+    return buf.read()
+

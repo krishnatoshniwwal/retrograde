@@ -114,6 +114,31 @@ def reconstruct_path(
     return np.column_stack([x, y])
 
 
+def compute_rms_error(
+    path_approx: np.ndarray,
+    path_full: np.ndarray,
+) -> float:
+    """Compute the RMS distance between two reconstructed paths.
+
+    Both paths are resampled to the same number of points before comparison,
+    so they don't need to have equal length.
+
+    Args:
+        path_approx: (M, 2) approximate path (fewer terms).
+        path_full:   (N, 2) reference path (full terms).
+
+    Returns:
+        RMS pointwise distance in pixels (float).
+    """
+    n = min(len(path_approx), len(path_full))
+    # Resample both to n points via linear indexing
+    idx_approx = np.round(np.linspace(0, len(path_approx) - 1, n)).astype(int)
+    idx_full   = np.round(np.linspace(0, len(path_full)   - 1, n)).astype(int)
+    a = path_approx[idx_approx]
+    b = path_full[idx_full]
+    return float(np.sqrt(np.mean(np.sum((a - b) ** 2, axis=1))))
+
+
 def get_epicycle_frames(
     coeffs: list[EpicycleCoeff],
     n_terms: int,
