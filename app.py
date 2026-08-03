@@ -495,10 +495,12 @@ with st.sidebar:
     # ── APPEARANCE ──
     st.markdown('<div class="sidebar-section">RENDER_CONFIG</div>', unsafe_allow_html=True)
     theme = "light"  # light mode only
-    colormap = st.selectbox(
+    colormap = st.radio(
         "COLORMAP_PRESET",
         ["plasma", "viridis", "inferno", "magma", "cool", "spring", "turbo", "rainbow"],
+        index=0,
     )
+
 
 
 
