@@ -31,8 +31,8 @@ output/
 *.DS_Store
 Thumbs.db
 
-# Streamlit
-.streamlit/
+# Streamlit secrets (never commit actual secrets)
+.streamlit/secrets.toml
 
 # pytest
 .pytest_cache/
