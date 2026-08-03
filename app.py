@@ -870,8 +870,10 @@ with tab_equations:
 # ══════════════════════════════════════════════════════════════════════════════
 with tab_download:
     st.markdown('<div class="card-title">DATA_EXPORT</div>', unsafe_allow_html=True)
+    st.markdown("<hr style='margin: 0.5rem 0 1.5rem; border-color: #e2e8f0;'>", unsafe_allow_html=True)
 
     # ── Row 1: four main export cards ────────────────────────────────────────
+
     dl1, dl2, dl3, dl4 = st.columns(4, gap="large")
 
     # ── PNG ──────────────────────────────────────────────────────────────────
@@ -1037,8 +1039,18 @@ with tab_download:
         else:
             st.markdown('<div class="info-box" style="font-size:0.8rem;">[ AWAITING_PIPELINE ]</div>', unsafe_allow_html=True)
 
+
     # ── Row 2: Print-ready poster (full-width card + two buttons side by side)
-    st.markdown("<div style='margin-top: 1.5rem;'></div>", unsafe_allow_html=True)
+    st.markdown("""
+    <div style="display:flex; align-items:center; gap:12px; margin: 2rem 0 1.5rem;">
+        <div style="font-size:0.75rem; font-weight:700; color:#4f46e5;
+                    letter-spacing:0.12em; text-transform:uppercase; white-space:nowrap;">
+            // PRINT_EXPORT
+        </div>
+        <div style="flex:1; height:1px; background: linear-gradient(to right, #e2e8f0, transparent);"></div>
+    </div>
+    """, unsafe_allow_html=True)
+
     prt_card, prt_btns = st.columns([2, 3], gap="large")
 
     with prt_card:
