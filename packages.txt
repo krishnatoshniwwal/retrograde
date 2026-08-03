@@ -1,3 +1,3 @@
-ffmpeg
-libgl1
-libglib2.0-0
+# No system packages needed:
+# - opencv-python-headless bundles its own native libs
+# - imageio[ffmpeg] installs imageio-ffmpeg which bundles its own ffmpeg binary
