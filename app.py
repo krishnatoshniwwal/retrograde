@@ -254,7 +254,7 @@ def generate_sample_image() -> np.ndarray:
 
 
 # ── Core pipeline (cached) ─────────────────────────────────────────────────
-@st.cache_data(show_spinner=False)
+
 def run_pipeline(
     img_bytes: bytes,
     method: str,
@@ -393,7 +393,7 @@ def _build_poster_bytes(
 
 
 # ── Spline pipeline — always used for Desmos export ───────────────────────
-@st.cache_data(show_spinner=False)
+
 def run_spline_for_desmos(
     img_bytes: bytes,
     canny_low: int,
@@ -565,21 +565,29 @@ else:  # DEMO DATA
     img_pil   = Image.fromarray(sample_arr)
     img_name  = "demo_star"
 
-# ── Run pipeline ──
-with st.spinner(""):
-    t0 = time.time()
-    pipeline_out = run_pipeline(
-        img_bytes=img_bytes,
-        method=method,
-        n_terms=n_terms,
-        canny_low=canny_low,
-        canny_high=canny_high,
-        max_dim=max_dim,
-        max_contours=max_contours,
-        theme=theme,
-        colormap=colormap,
-    )
-    elapsed = time.time() - t0
+# ── Run pipeline (session-state cache to avoid re-running on every widget interaction) ──
+_cache_key = (img_bytes, method, n_terms, canny_low, canny_high, max_dim, max_contours, theme, colormap)
+if st.session_state.get("_pipeline_key") != _cache_key:
+    with st.spinner(""):
+        t0 = time.time()
+        pipeline_out = run_pipeline(
+            img_bytes=img_bytes,
+            method=method,
+            n_terms=n_terms,
+            canny_low=canny_low,
+            canny_high=canny_high,
+            max_dim=max_dim,
+            max_contours=max_contours,
+            theme=theme,
+            colormap=colormap,
+        )
+        pipeline_out["_elapsed"] = time.time() - t0
+        st.session_state["_pipeline_key"] = _cache_key
+        st.session_state["_pipeline_out"] = pipeline_out
+else:
+    pipeline_out = st.session_state["_pipeline_out"]
+
+elapsed = pipeline_out.get("_elapsed", 0.0)
 
 results    = pipeline_out["results"]
 paths      = pipeline_out["paths"]
