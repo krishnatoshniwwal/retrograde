@@ -642,6 +642,12 @@ tab_static, tab_anim, tab_equations, tab_download = st.tabs([
 # TAB 1 — Static Reconstruction
 # ══════════════════════════════════════════════════════════════════════════════
 with tab_static:
+    st.markdown("""
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:1.5rem;">
+        <div style="font-size:0.75rem; font-weight:700; color:#4f46e5; letter-spacing:0.12em; text-transform:uppercase; white-space:nowrap;">// STATIC_RECONSTRUCTION</div>
+        <div style="flex:1; height:1px; background: linear-gradient(to right, #e2e8f0, transparent);"></div>
+    </div>
+    """, unsafe_allow_html=True)
     col_orig, col_recon = st.columns(2, gap="large")
 
     with col_orig:
@@ -748,7 +754,12 @@ with tab_anim:
     elif not results:
         st.warning("No contours to animate.")
     else:
-        st.markdown('<div class="card-title">KINETIC_ANIMATION</div>', unsafe_allow_html=True)
+        st.markdown("""
+        <div style="display:flex; align-items:center; gap:12px; margin-bottom:1.5rem;">
+            <div style="font-size:0.75rem; font-weight:700; color:#4f46e5; letter-spacing:0.12em; text-transform:uppercase; white-space:nowrap;">// KINETIC_ANIMATION</div>
+            <div style="flex:1; height:1px; background: linear-gradient(to right, #e2e8f0, transparent);"></div>
+        </div>
+        """, unsafe_allow_html=True)
         st.markdown(
             '<div class="info-box">Animates contour trajectory as a system of rotating epicycles. '
             'Rendering requires 15-40s processing time.</div>',
@@ -813,7 +824,12 @@ with tab_anim:
 # TAB 3 — Symbolic Equations
 # ══════════════════════════════════════════════════════════════════════════════
 with tab_equations:
-    st.markdown('<div class="card-title">SYMBOLIC_DATA</div>', unsafe_allow_html=True)
+    st.markdown("""
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:1.5rem;">
+        <div style="font-size:0.75rem; font-weight:700; color:#4f46e5; letter-spacing:0.12em; text-transform:uppercase; white-space:nowrap;">// SYMBOLIC_DATA</div>
+        <div style="flex:1; height:1px; background: linear-gradient(to right, #e2e8f0, transparent);"></div>
+    </div>
+    """, unsafe_allow_html=True)
 
     eq_ctrl1, eq_ctrl2 = st.columns(2, gap="medium")
     with eq_ctrl1:
