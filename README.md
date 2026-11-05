@@ -7,6 +7,7 @@
 Upload a photo or sketch. The app traces the outlines of your image, then figures out a set of equations — real, symbolic, exportable equations — that can reproduce those outlines from scratch. You end up with the actual math behind the picture.
 
 Try it here!!!!
+
 https://retrograde-etvpburewc6tufyaqbyk5r.streamlit.app/
 
 ---
