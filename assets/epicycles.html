@@ -1,0 +1,224 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Jersey+10&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: transparent; overflow: hidden; }
+  body { font-family: 'JetBrains Mono', ui-monospace, monospace; color: __FG__; }
+  .stage {
+    position: relative; height: __HEIGHT__px;
+    background: linear-gradient(180deg, __BG_DEEP__ 0%, __BG__ 62%, __SKY1__ 100%);
+    border: 2px solid __BORDER__; box-shadow: 4px 4px 0 __BG_DEEP__;
+  }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .hud {
+    position: absolute; left: 12px; top: 10px; display: flex; gap: 14px;
+    font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: __MUTED__;
+    pointer-events: none;
+  }
+  .hud b { color: __PRIMARY__; font-weight: 600; }
+  .bar {
+    position: absolute; left: 10px; right: 10px; bottom: 10px;
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  }
+  button {
+    font-family: 'Jersey 10', 'JetBrains Mono', monospace; font-size: 18px; line-height: 1;
+    letter-spacing: .04em; padding: 6px 12px 5px; cursor: pointer;
+    color: __FG__; background: __CARD__; border: 2px solid __BORDER__;
+    box-shadow: 2px 2px 0 __BG_DEEP__; transition: transform .08s, box-shadow .08s, background .15s;
+  }
+  button:hover { background: __BORDER__; transform: translate(-1px,-1px); box-shadow: 3px 3px 0 __BG_DEEP__; }
+  button:active { transform: translate(2px,2px); box-shadow: 0 0 0 __BG_DEEP__; }
+  button.on { background: __PRIMARY__; color: __BG_DEEP__; border-color: __BG_DEEP__; }
+  .grp { display: flex; gap: 0; }
+  .grp button { box-shadow: none; margin-right: -2px; }
+  .grp button:hover { transform: none; box-shadow: none; }
+  .prog { flex: 1; min-width: 80px; height: 10px; background: __BG_DEEP__; border: 2px solid __BORDER__; }
+  .prog i { display: block; height: 100%; width: 0; background: __PRIMARY__; }
+  .lbl { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: __MUTED__; margin-right: 4px; }
+</style>
+</head>
+<body>
+<div class="stage" id="stage">
+  <canvas id="cv"></canvas>
+  <div class="hud">
+    <span>contours <b id="hc">0</b></span>
+    <span>circles <b id="hk">0</b></span>
+    <span>t = <b id="ht">0.00</b>&middot;2&pi;</span>
+  </div>
+  <div class="bar">
+    <button id="play" class="on" title="Play / pause (space)">&#10074;&#10074; Pause</button>
+    <button id="reset" title="Restart the drawing">&#8634; Restart</button>
+    <span class="lbl">speed</span>
+    <div class="grp" id="speed">
+      <button data-v="0.25">&frac14;&times;</button><button data-v="0.5">&frac12;&times;</button>
+      <button data-v="1" class="on">1&times;</button><button data-v="2">2&times;</button><button data-v="4">4&times;</button>
+    </div>
+    <span class="lbl">circles</span>
+    <div class="grp" id="gears">
+      <button data-v="focus">Focus</button><button data-v="all">All</button><button data-v="off">Off</button>
+    </div>
+    <button id="next" title="Move the focus to the next contour">Next &#9656;</button>
+    <div class="prog"><i id="pg"></i></div>
+  </div>
+</div>
+<script>
+(function () {
+  var D = __DATA__;
+  var C = { fg: '__FG__', accent: '__ACCENT__', sakura: '__SAKURA__', primary: '__PRIMARY__' };
+  var cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+  var stage = document.getElementById('stage');
+  var S = 900;                      // samples per revolution
+  var contours = D.contours;
+  var totalCircles = contours.reduce(function (a, c) { return a + c.t.length; }, 0);
+  var state = {
+    t: 0, playing: true, speed: 1, focus: 0,
+    gears: totalCircles <= 2500 ? 'all' : 'focus', hold: 0
+  };
+  document.getElementById('hc').textContent = contours.length;
+  document.getElementById('hk').textContent = totalCircles;
+
+  // Pre-compute each contour's full path and its DC anchor
+  contours.forEach(function (c) {
+    var pts = new Float64Array(S * 2), ax = 0, ay = 0;
+    c.t.forEach(function (term) { if (term[0] === 0) { ax += term[1] * Math.cos(term[2]); ay += term[1] * Math.sin(term[2]); } });
+    c.spin = c.t.filter(function (term) { return term[0] !== 0; });
+    c.ax = ax; c.ay = ay;
+    for (var i = 0; i < S; i++) {
+      var th = 2 * Math.PI * i / S, x = ax, y = ay;
+      for (var j = 0; j < c.spin.length; j++) {
+        var f = c.spin[j][0], r = c.spin[j][1], p = c.spin[j][2];
+        x += r * Math.cos(f * th + p); y += r * Math.sin(f * th + p);
+      }
+      pts[2 * i] = x; pts[2 * i + 1] = y;
+    }
+    c.pts = pts;
+  });
+
+  // Static star field
+  var stars = [];
+  for (var s = 0; s < 70; s++) stars.push([Math.random(), Math.random() * 0.8, Math.random() < 0.8 ? 1 : 2, Math.random() * 6.28]);
+
+  var W = 0, H = 0, dpr = 1, scale = 1, ox = 0, oy = 0;
+  function resize() {
+    dpr = window.devicePixelRatio || 1;
+    W = stage.clientWidth; H = stage.clientHeight;
+    cv.width = W * dpr; cv.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    var b = D.bounds, bw = Math.max(b[2] - b[0], 1), bh = Math.max(b[3] - b[1], 1);
+    var padTop = 40, padBot = 64, padX = 28;
+    scale = Math.min((W - 2 * padX) / bw, (H - padTop - padBot) / bh);
+    ox = (W - bw * scale) / 2 - b[0] * scale;
+    oy = padTop + ((H - padTop - padBot) - bh * scale) / 2 - b[1] * scale;
+  }
+  window.addEventListener('resize', resize); resize();
+
+  function X(x) { return ox + x * scale; }
+  function Y(y) { return oy + y * scale; }
+
+  function drawGears(c, th, alpha) {
+    var x = c.ax, y = c.ay;
+    ctx.lineWidth = 1;
+    for (var j = 0; j < c.spin.length; j++) {
+      var f = c.spin[j][0], r = c.spin[j][1], p = c.spin[j][2];
+      var nx = x + r * Math.cos(f * th + p), ny = y + r * Math.sin(f * th + p);
+      var rr = r * scale;
+      if (rr > 0.6) {
+        ctx.globalAlpha = 0.22 * alpha; ctx.strokeStyle = C.accent;
+        ctx.beginPath(); ctx.arc(X(x), Y(y), rr, 0, 2 * Math.PI); ctx.stroke();
+      }
+      ctx.globalAlpha = 0.55 * alpha; ctx.strokeStyle = C.fg;
+      ctx.beginPath(); ctx.moveTo(X(x), Y(y)); ctx.lineTo(X(nx), Y(ny)); ctx.stroke();
+      x = nx; y = ny;
+    }
+    ctx.globalAlpha = 1;
+    return [x, y];
+  }
+
+  function frame(now) {
+    ctx.clearRect(0, 0, W, H);
+    // twinkling stars
+    for (var s = 0; s < stars.length; s++) {
+      var st = stars[s];
+      ctx.globalAlpha = 0.25 + 0.35 * (0.5 + 0.5 * Math.sin(now / 900 + st[3]));
+      ctx.fillStyle = C.fg; ctx.fillRect(Math.round(st[0] * W), Math.round(st[1] * H), st[2], st[2]);
+    }
+    ctx.globalAlpha = 1;
+
+    var idx = Math.min(S, Math.floor(state.t * S));
+    var th = 2 * Math.PI * state.t;
+
+    // traces
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    contours.forEach(function (c, ci) {
+      if (idx < 2) return;
+      ctx.strokeStyle = c.c; ctx.lineWidth = ci === state.focus ? 2.2 : 1.6;
+      ctx.beginPath(); ctx.moveTo(X(c.pts[0]), Y(c.pts[1]));
+      for (var i = 1; i < idx; i++) ctx.lineTo(X(c.pts[2 * i]), Y(c.pts[2 * i + 1]));
+      if (idx >= S) ctx.closePath();
+      ctx.stroke();
+    });
+
+    // gears + tips (only while drawing)
+    if (state.t < 1 && state.gears !== 'off') {
+      contours.forEach(function (c, ci) {
+        var isFocus = ci === state.focus;
+        if (state.gears === 'focus' && !isFocus) return;
+        var tip = drawGears(c, th, isFocus ? 1 : 0.6);
+        ctx.shadowColor = C.sakura; ctx.shadowBlur = isFocus ? 12 : 6;
+        ctx.fillStyle = C.sakura; var sz = isFocus ? 6 : 4;
+        ctx.fillRect(Math.round(X(tip[0]) - sz / 2), Math.round(Y(tip[1]) - sz / 2), sz, sz);
+        ctx.shadowBlur = 0;
+      });
+    }
+
+    document.getElementById('ht').textContent = Math.min(state.t, 1).toFixed(2);
+    document.getElementById('pg').style.width = (Math.min(state.t, 1) * 100).toFixed(1) + '%';
+  }
+
+  var last = performance.now();
+  function loop(now) {
+    var dt = Math.min(0.05, (now - last) / 1000); last = now;
+    if (state.playing) {
+      if (state.t < 1) {
+        state.t = Math.min(1, state.t + dt * state.speed / 14);   // ~14 s per revolution at 1x
+      } else {
+        state.hold += dt;
+        if (state.hold > 2.5) { state.t = 0; state.hold = 0; }
+      }
+    }
+    frame(now);
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  // Controls
+  var playBtn = document.getElementById('play');
+  function setPlaying(p) {
+    state.playing = p;
+    playBtn.classList.toggle('on', p);
+    playBtn.innerHTML = p ? '&#10074;&#10074; Pause' : '&#9654; Play';
+  }
+  playBtn.onclick = function () { setPlaying(!state.playing); };
+  document.getElementById('reset').onclick = function () { state.t = 0; state.hold = 0; setPlaying(true); };
+  document.getElementById('next').onclick = function () { state.focus = (state.focus + 1) % Math.max(contours.length, 1); };
+  function group(id, key, parse) {
+    var btns = document.querySelectorAll('#' + id + ' button');
+    btns.forEach(function (b) {
+      if (String(state[key]) === b.dataset.v) b.classList.add('on'); else b.classList.remove('on');
+      b.onclick = function () {
+        state[key] = parse(b.dataset.v);
+        btns.forEach(function (o) { o.classList.toggle('on', o === b); });
+      };
+    });
+  }
+  group('speed', 'speed', parseFloat);
+  group('gears', 'gears', String);
+  document.addEventListener('keydown', function (e) { if (e.code === 'Space') { e.preventDefault(); setPlaying(!state.playing); } });
+})();
+</script>
+</body>
+</html>

@@ -41,18 +41,18 @@ from src.piecewise import SplineSegment
 # A curated neon palette that looks good on Desmos's white background.
 # Cycles if there are more contours than colors.
 _NEON_PALETTE = [
-    "#ff003c",  # neon red
-    "#00f0ff",  # cyan
-    "#ff8c00",  # orange
-    "#a259ff",  # violet
-    "#00ff9f",  # mint
-    "#ffde00",  # yellow
-    "#ff69b4",  # hot pink
-    "#4fc3f7",  # sky blue
-    "#76ff03",  # lime
-    "#ff4081",  # pink
-    "#18ffff",  # aqua
-    "#ffd740",  # amber
+    "#1c61a1",  # sky blue
+    "#c74440",  # brick red
+    "#2d8a4e",  # leaf green
+    "#c76b98",  # sakura
+    "#2481aa",  # lagoon
+    "#a56a00",  # amber
+    "#6042a6",  # violet
+    "#0f2753",  # navy ink
+    "#5ea33a",  # lime (deep)
+    "#d0587e",  # blossom
+    "#178f9c",  # teal
+    "#8a5a2b",  # bark
 ]
 
 
@@ -366,9 +366,9 @@ def build_desmos_html(
 <style>
   * {{ box-sizing: border-box; margin: 0; padding: 0; }}
   body {{
-    background: #ffffff;
-    color: #1a1a1a;
-    font-family: 'Courier New', monospace;
+    background: #0b1f4b;
+    color: #f3f1e2;
+    font-family: ui-monospace, 'Cascadia Mono', Menlo, monospace;
     height: 100vh;
     display: flex;
     flex-direction: column;
@@ -378,8 +378,8 @@ def build_desmos_html(
     align-items: center;
     justify-content: space-between;
     padding: 0.6rem 1.2rem;
-    border-bottom: 1px solid #d0d0d0;
-    background: #f5f5f5;
+    border-bottom: 3px solid #061431;
+    background: linear-gradient(180deg, #061431, #0b1f4b);
     flex-shrink: 0;
   }}
   header .logo {{
@@ -387,11 +387,12 @@ def build_desmos_html(
     font-weight: 700;
     letter-spacing: 0.18em;
     text-transform: uppercase;
-    color: #1a1a1a;
+    color: #a8e27c;
+    text-shadow: 0 2px 0 #061431;
   }}
   header .meta {{
     font-size: 0.7rem;
-    color: #888;
+    color: #a7b6d6;
     letter-spacing: 0.08em;
   }}
   #calc-container {{
@@ -409,31 +410,31 @@ def build_desmos_html(
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    background: #ffffff;
+    background: #0b1f4b;
     gap: 1rem;
     z-index: 10;
     transition: opacity 0.4s ease;
   }}
   #loading .spinner {{
     width: 40px; height: 40px;
-    border: 3px solid #e0e0e0;
-    border-top-color: #333;
-    border-radius: 50%;
+    border: 4px solid #2b4c8a;
+    border-top-color: #a8e27c;
+    border-radius: 0;
     animation: spin 0.8s linear infinite;
   }}
-  #loading p {{ font-size: 0.8rem; color: #888; letter-spacing: 0.1em; }}
+  #loading p {{ font-size: 0.8rem; color: #a7b6d6; letter-spacing: 0.1em; }}
   @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
 </style>
 </head>
 <body>
 <header>
-  <div class="logo">[ RETROGRADE ] // DESMOS_EXPORT</div>
-  <div class="meta">EXPR_COUNT: {len(exprs)} &nbsp;|&nbsp; INTERACTIVE_MODE</div>
+  <div class="logo">&#9670; Retrograde &middot; Desmos</div>
+  <div class="meta">{len(exprs)} expressions &nbsp;&middot;&nbsp; drag to pan, scroll to zoom</div>
 </header>
 <div id="calc-container">
   <div id="loading">
     <div class="spinner"></div>
-    <p>LOADING_GRAPH...</p>
+    <p>Plotting your curves&hellip;</p>
   </div>
   <div id="calculator"></div>
 </div>

@@ -6,10 +6,22 @@ enableXsrfProtection = false
 [browser]
 gatherUsageStats = false
 
+# Pixel-art night-sky theme — palette mirrors src/theme.py and assets/style.css
 [theme]
-base = "light"
-primaryColor = "#4f46e5"
-backgroundColor = "#f8f9fb"
-secondaryBackgroundColor = "#ffffff"
-textColor = "#1a1a2e"
-font = "sans serif"
+base = "dark"
+primaryColor = "#a8e27c"
+backgroundColor = "#0b1f4b"
+secondaryBackgroundColor = "#112a60"
+textColor = "#f3f1e2"
+linkColor = "#6ad5e7"
+borderColor = "#2b4c8a"
+showWidgetBorder = true
+baseRadius = "none"
+buttonRadius = "none"
+codeBackgroundColor = "#061431"
+font = "'Space Grotesk', system-ui, sans-serif"
+codeFont = "'JetBrains Mono', ui-monospace, monospace"
+
+[theme.sidebar]
+backgroundColor = "#061431"
+secondaryBackgroundColor = "#0b1f4b"

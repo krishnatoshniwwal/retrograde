@@ -36,18 +36,28 @@ Both methods spit out real equations that you can copy, graph, or print.
 
 ## What you can do with it
 
-**See the reconstruction live** — adjust how many terms/curves to use and watch the image appear from nothing, term by term.
+**See the reconstruction live**: put the original, its edge map and the reconstruction side by side, then drag the scrubber to watch the picture resolve one Fourier term at a time, with an RMS-error meter.
 
-**Watch the wheels spin** — an animated GIF shows the epicycle mechanism in motion: the rotating circles building up the outline in real time.
+**Watch the wheels spin**: the Epicycles tab animates *every* contour at once, each drawn by its own chain of rotating circles. It runs in your browser with no server rendering. You can pause, change the speed, show the circles for one contour or all of them, and move the focus between contours. You can also bake a single contour into a shareable GIF.
 
-**Read the equations** — every tab has an "Explain the math" panel that walks through what the equations on screen actually mean, using the numbers from your specific image.
+**Read the equations**: each contour's x(t), y(t) is typeset with KaTeX, with its LaTeX source ready to copy. Every tab has an "Explain the math" panel that walks through the equations using the numbers from your image.
 
-**Export everything:**
+**Start from a built-in shape**: a planet's retrograde loop (the app's namesake), a star, a heart, Fay's butterfly curve, a rose curve and nested squares are all drawn procedurally, so no image files are needed.
+
+**Export everything** (files are generated only when you click):
 - PNG of the reconstruction
 - Animated GIF of the epicycles
-- LaTeX `.tex` file and compiled PDF with all the equations
+- LaTeX `.tex` file and a PDF of all the equations
 - A Desmos graph (JSON or self-contained HTML) you can open in any browser and interact with
-- A print-ready SVG/PDF poster — clean white background, equation footer, plotter-ready
+- A print-ready SVG/PDF poster in cream **Paper** or **Night** style, with a custom title and a live preview
+
+---
+
+## Look & feel
+
+Retrograde uses a pixel-art night-sky theme: deep navy skies, cream ink, a lime primary, cyan highlights, a pale moon and sakura pink. It has square corners, hard offset shadows and the *Jersey 10* display face. The hero is a working epicycle machine animated in pure CSS, and it traces a real retrograde loop.
+
+The palette is defined once in [`src/theme.py`](src/theme.py) and shared by the Streamlit CSS ([`assets/style.css`](assets/style.css)), every matplotlib figure, the PDF, the poster and the Desmos export. The four custom colormaps (`aurora`, `sakura`, `dusk`, `moonlight`) each have a darker "ink" twin that is used automatically on paper output.
 
 ---
 
@@ -75,7 +85,24 @@ Your image
   → export (LaTeX, GIF, Desmos, SVG)
 ```
 
-The whole pipeline is modular — each step is a separate Python module with its own tests.
+The whole pipeline is modular, and each step is a separate Python module with its own tests:
+
+```
+app.py                 Streamlit front-end
+src/preprocessing.py   resize, denoise, Canny edges
+src/contours.py        contour tracing + Douglas–Peucker simplification
+src/fourier.py         DFT → epicycle coefficients, reconstruction, RMS error
+src/piecewise.py       parametric cubic splines
+src/symbolic.py        SymPy / LaTeX equations
+src/render.py          matplotlib figures, GIF animation, poster
+src/latex_export.py    .tex document + matplotlib-rendered PDF
+src/desmos_export.py   Desmos expressions, JSON state, standalone HTML
+src/explainer.py       "Explain the math" text from live numbers
+src/theme.py           palette + custom colormaps (single source of truth)
+src/ui.py              hero, HUD tiles, cards, live epicycle viewer
+src/samples.py         procedurally drawn demo shapes
+assets/                stylesheet + epicycle viewer template
+```
 
 ---
 

@@ -3,7 +3,7 @@ render.py — Matplotlib-based static reconstruction and epicycle animation.
 
 Supports:
 - Static contour plots with gradient colouring (LineCollection)
-- Dark/light themes
+- Night-sky / cream-paper themes (see src/theme.py)
 - Animated epicycle reconstruction (GIF/MP4 via imageio)
 - Gallery HTML page for batch outputs
 """
@@ -21,26 +21,54 @@ from matplotlib.animation import FuncAnimation, PillowWriter
 from pathlib import Path
 from typing import Any
 
+from src.theme import NIGHT, PAPER, paper_colormap, register_colormaps
+
+register_colormaps()
+
 
 # ---------------------------------------------------------------------------
 # Theme helpers
 # ---------------------------------------------------------------------------
 
-DARK_THEME = {
-    "bg": "#0d0d0d",
-    "fg": "#f0f0f0",
-    "grid": "#1e1e1e",
+#: Night-sky theme (default) — matches the Streamlit UI.
+NIGHT_THEME = {
+    "bg": NIGHT["bg_deep"],
+    "fg": NIGHT["fg"],
+    "muted": NIGHT["muted"],
+    "grid": NIGHT["border"],
+    "circle": NIGHT["accent"],
+    "arm": NIGHT["fg"],
+    "trace": NIGHT["primary"],
+    "tip": NIGHT["sakura"],
 }
-LIGHT_THEME = {
-    "bg": "#fafafa",
-    "fg": "#111111",
-    "grid": "#e0e0e0",
+#: Cream-paper theme — for print and light backgrounds.
+PAPER_THEME = {
+    "bg": PAPER["bg"],
+    "fg": PAPER["fg"],
+    "muted": PAPER["muted"],
+    "grid": PAPER["border"],
+    "circle": PAPER["accent"],
+    "arm": PAPER["fg"],
+    "trace": PAPER["accent"],
+    "tip": PAPER["sakura"],
 }
 
+# Backwards-compatible aliases ("dark" / "light" were the original names).
+DARK_THEME = NIGHT_THEME
+LIGHT_THEME = PAPER_THEME
 
-def _apply_theme(fig: plt.Figure, ax: plt.Axes, theme: str = "dark") -> None:
-    """Apply dark or light aesthetic theme to a figure."""
-    t = DARK_THEME if theme == "dark" else LIGHT_THEME
+
+def get_theme(theme: str = "night") -> dict[str, str]:
+    """Return the palette dict for a theme name.
+
+    ``"night"`` / ``"dark"`` -> night sky; ``"paper"`` / ``"light"`` -> cream paper.
+    """
+    return PAPER_THEME if theme in ("paper", "light") else NIGHT_THEME
+
+
+def _apply_theme(fig: plt.Figure, ax: plt.Axes, theme: str = "night") -> None:
+    """Apply the night or paper theme to a figure."""
+    t = get_theme(theme)
     fig.patch.set_facecolor(t["bg"])
     ax.set_facecolor(t["bg"])
     ax.tick_params(colors=t["fg"])
@@ -52,7 +80,7 @@ def _make_figure(config: dict[str, Any]) -> tuple[plt.Figure, plt.Axes]:
     """Create a figure with theme applied."""
     cfg_r = config.get("render", {})
     figsize = tuple(cfg_r.get("figsize", [10, 10]))
-    theme = cfg_r.get("theme", "dark")
+    theme = cfg_r.get("theme", "night")
 
     fig, ax = plt.subplots(figsize=figsize)
     _apply_theme(fig, ax, theme=theme)
@@ -74,9 +102,9 @@ def _path_to_segments(path: np.ndarray) -> np.ndarray:
 def plot_path_gradient(
     ax: plt.Axes,
     path: np.ndarray,
-    colormap: str = "plasma",
+    colormap: str = "aurora",
     line_width: float = 1.2,
-    alpha: float = 0.9,
+    alpha: float = 0.95,
 ) -> None:
     """Draw a path with a continuous colour gradient along its length.
 
@@ -121,10 +149,10 @@ def plot_reconstruction(
     """
     config = config or {}
     cfg_r = config.get("render", {})
-    colormap = cfg_r.get("colormap", "plasma")
+    colormap = cfg_r.get("colormap", "aurora")
     line_width = cfg_r.get("line_width", 1.2)
-    theme = cfg_r.get("theme", "dark")
-    fg = DARK_THEME["fg"] if theme == "dark" else LIGHT_THEME["fg"]
+    theme = cfg_r.get("theme", "night")
+    fg = get_theme(theme)["muted"]
 
     fig, ax = _make_figure(config)
 
@@ -139,7 +167,8 @@ def plot_reconstruction(
         flipped_paths.append(fp)
 
     if not flipped_paths:
-        ax.set_title(title, color=fg, pad=12, fontsize=13, fontweight="bold")
+        if title:
+            ax.set_title(title, color=fg, pad=12, fontsize=11, fontfamily="monospace")
         fig.tight_layout(pad=0.5)
         return fig
 
@@ -154,7 +183,8 @@ def plot_reconstruction(
     for flipped in flipped_paths:
         plot_path_gradient(ax, flipped, colormap=colormap, line_width=line_width)
 
-    ax.set_title(title, color=fg, pad=12, fontsize=13, fontweight="bold")
+    if title:
+        ax.set_title(title, color=fg, pad=12, fontsize=11, fontfamily="monospace")
     fig.tight_layout(pad=0.5)
     return fig
 
@@ -170,7 +200,8 @@ def fig_to_png_bytes(fig: plt.Figure, dpi: int = 150) -> bytes:
         PNG bytes.
     """
     buf = io.BytesIO()
-    fig.savefig(buf, format="png", dpi=dpi, bbox_inches="tight")
+    fig.savefig(buf, format="png", dpi=dpi, bbox_inches="tight",
+                facecolor=fig.get_facecolor())
     buf.seek(0)
     return buf.read()
 
@@ -182,7 +213,7 @@ def fig_to_png_bytes(fig: plt.Figure, dpi: int = 150) -> bytes:
 def _draw_epicycles(
     ax: plt.Axes,
     frame_data: list[tuple[float, float, float]],
-    theme: str = "dark",
+    theme: str = "night",
 ) -> list:
     """Draw one frame of epicycles: circles + arm lines.
 
@@ -194,7 +225,7 @@ def _draw_epicycles(
     Returns:
         List of drawn artists (not used externally but kept for reference).
     """
-    t = DARK_THEME if theme == "dark" else LIGHT_THEME
+    t = get_theme(theme)
     artists = []
 
     prev_x, prev_y = 0.0, 0.0
@@ -202,19 +233,19 @@ def _draw_epicycles(
         # Draw circle outline
         circle = plt.Circle(
             (prev_x, prev_y), radius,
-            color="#3a7ca5", fill=False, linewidth=0.5, alpha=0.3,
+            color=t["circle"], fill=False, linewidth=0.5, alpha=0.3,
         )
         ax.add_patch(circle)
         # Draw arm line from previous centre to current
         line, = ax.plot(
             [prev_x, cx], [prev_y, cy],
-            color="#7ec8e3", linewidth=0.8, alpha=0.7,
+            color=t["arm"], linewidth=0.8, alpha=0.7,
         )
         artists.extend([circle, line])
         prev_x, prev_y = cx, cy
 
     # Draw tip dot
-    tip, = ax.plot(prev_x, prev_y, "o", color="#ff6b6b", markersize=3, alpha=0.9)
+    tip, = ax.plot(prev_x, prev_y, "s", color=t["tip"], markersize=3, alpha=0.9)
     artists.append(tip)
     return artists
 
@@ -240,12 +271,12 @@ def animate_epicycles(
 
     config = config or {}
     cfg_r = config.get("render", {})
-    theme = cfg_r.get("theme", "dark")
+    theme = cfg_r.get("theme", "night")
     fps = cfg_r.get("fps", 30)
     n_frames = cfg_r.get("animation_frames", 300)
     figsize = tuple(cfg_r.get("figsize", [10, 10]))
 
-    t_theme = DARK_THEME if theme == "dark" else LIGHT_THEME
+    t_theme = get_theme(theme)
 
     # Pre-compute all frame data
     frames_data = get_epicycle_frames(coeffs, n_terms=n_terms, n_frames=n_frames)
@@ -272,7 +303,7 @@ def animate_epicycles(
     ax.axis("off")
 
     # The accumulated trace line
-    trace_line, = ax.plot([], [], color="#ff6b6b", linewidth=1.0, alpha=0.8)
+    trace_line, = ax.plot([], [], color=t_theme["trace"], linewidth=1.4, alpha=0.95)
     trace_x: list[float] = []
     trace_y: list[float] = []
     dynamic_artists: list = []
@@ -305,17 +336,17 @@ def animate_epicycles(
         for (cx, cy, radius) in flipped_frame:
             circle = plt.Circle(
                 (prev_x, prev_y), radius,
-                color="#3a7ca5", fill=False, linewidth=0.5, alpha=0.25,
+                color=t_theme["circle"], fill=False, linewidth=0.6, alpha=0.28,
             )
             ax.add_patch(circle)
             line, = ax.plot(
                 [prev_x, cx], [prev_y, cy],
-                color="#7ec8e3", linewidth=0.8, alpha=0.6,
+                color=t_theme["arm"], linewidth=0.8, alpha=0.55,
             )
             dynamic_artists.extend([circle, line])
             prev_x, prev_y = cx, cy
 
-        dot, = ax.plot(prev_x, prev_y, "o", color="#ff6b6b", markersize=4)
+        dot, = ax.plot(prev_x, prev_y, "s", color=t_theme["tip"], markersize=5)
         dynamic_artists.append(dot)
 
         return [trace_line] + dynamic_artists
@@ -438,20 +469,24 @@ def render_gallery(
 <head>
 <meta charset="UTF-8"/>
 <meta name="description" content="Image-to-Function Renderer output gallery"/>
-<title>Image-to-Function Gallery</title>
+<title>Retrograde Gallery</title>
 <style>
-  body {{ background:#0d0d0d; color:#f0f0f0; font-family: 'Segoe UI', sans-serif;
+  body {{ background:linear-gradient(180deg,{NIGHT["bg_deep"]},{NIGHT["bg"]} 40%,{NIGHT["sky_1"]});
+          min-height:100vh; color:{NIGHT["fg"]}; font-family:system-ui,sans-serif;
           margin:0; padding:2rem; }}
-  h1 {{ text-align:center; font-size:2rem; margin-bottom:2rem; }}
+  h1 {{ text-align:center; font-size:2.4rem; margin-bottom:2rem; letter-spacing:.04em;
+        text-shadow:0 3px 0 {NIGHT["bg_deep"]}; }}
   .gallery {{ display:flex; flex-wrap:wrap; gap:2rem; justify-content:center; }}
-  .card {{ background:#1a1a1a; border-radius:12px; padding:1rem;
+  .card {{ background:{NIGHT["card"]}; border:2px solid {NIGHT["border"]};
+           box-shadow:4px 4px 0 {NIGHT["bg_deep"]}; padding:1rem;
            max-width:460px; text-align:center; }}
-  .card h2 {{ font-size:1rem; margin-bottom:0.75rem; color:#ccc; }}
-  .card img {{ max-width:100%; border-radius:8px; }}
+  .card h2 {{ font-size:1rem; margin-bottom:0.75rem; color:{NIGHT["primary"]};
+              text-transform:uppercase; letter-spacing:.1em; }}
+  .card img {{ max-width:100%; border:2px solid {NIGHT["border"]}; }}
 </style>
 </head>
 <body>
-<h1>Image-to-Function Renderer Gallery</h1>
+<h1>Retrograde Gallery</h1>
 <div class="gallery">{cards}</div>
 </body>
 </html>"""
@@ -468,33 +503,45 @@ def render_gallery(
 def plot_poster(
     paths: list[np.ndarray],
     title: str = "RETROGRADE",
-    subtitle: str = "Image → Mathematical Functions",
+    subtitle: str = "Image -> Mathematical Functions",
     equation_snippet: str = "",
     config: dict[str, Any] | None = None,
+    style: str = "paper",
 ) -> plt.Figure:
-    """Create a clean poster-layout figure suitable for SVG/PDF export.
+    """Create a poster-layout figure suitable for SVG/PDF export.
 
-    The poster uses a white background, thick reconstruction lines, a bold
-    title, a subtitle, and an optional equation snippet in the bottom corner.
-    Designed to be printed or sent to a plotter/laser cutter as a single-stroke
-    SVG path.
+    Two styles are available:
+
+    - ``"paper"`` (default): cream background, navy ink — print / plotter friendly.
+    - ``"night"``: deep night-sky background, matching the app.
 
     Args:
         paths:            List of (N, 2) reconstructed path arrays.
         title:            Large title text (top of poster).
         subtitle:         Smaller subtitle text below the title.
-        equation_snippet: Short equation string rendered in the bottom-left corner.
+        equation_snippet: Short equation string rendered in the bottom-right corner.
         config:           Optional config dict (uses render.colormap, render.line_width).
+        style:            ``"paper"`` or ``"night"``.
 
     Returns:
         matplotlib Figure — call fig_to_svg_bytes or fig_to_pdf_bytes to export.
     """
     config = config or {}
     cfg_r  = config.get("render", {})
-    colormap   = cfg_r.get("colormap", "plasma")
+    colormap   = cfg_r.get("colormap", "aurora")
+    cmap_label = colormap
     line_width = cfg_r.get("line_width", 1.8)
 
-    # Poster is always white-background, regardless of theme setting
+    if style == "night":
+        bg, ink, muted, rule, accent = (
+            NIGHT["bg_deep"], NIGHT["fg"], NIGHT["muted"], NIGHT["border"], NIGHT["primary"],
+        )
+    else:
+        bg, ink, muted, rule, accent = (
+            PAPER["bg"], PAPER["fg"], PAPER["muted"], PAPER["border"], PAPER["accent"],
+        )
+        colormap = paper_colormap(colormap)
+
     fig = plt.figure(figsize=(12, 14))
 
     # Layout: title area (top 12%), plot area (75%), footer (13%)
@@ -502,26 +549,26 @@ def plot_poster(
     ax_plot   = fig.add_axes([0.04, 0.13, 0.92, 0.74])
     ax_footer = fig.add_axes([0.0, 0.0,  1.0, 0.13])
 
-    # ── Background ──
-    fig.patch.set_facecolor("#ffffff")
+    fig.patch.set_facecolor(bg)
     for ax in (ax_title, ax_plot, ax_footer):
-        ax.set_facecolor("#ffffff")
+        ax.set_facecolor(bg)
         ax.axis("off")
 
     # ── Title area ──
     ax_title.text(
-        0.5, 0.72, title,
+        0.5, 0.70, title,
         ha="center", va="center", transform=ax_title.transAxes,
-        fontsize=36, fontweight="bold", color="#1a1a2e",
+        fontsize=38, fontweight="bold", color=ink,
         fontfamily="monospace",
     )
     ax_title.text(
-        0.5, 0.28, subtitle,
+        0.5, 0.26, subtitle,
         ha="center", va="center", transform=ax_title.transAxes,
-        fontsize=13, color="#64748b",
+        fontsize=12, color=muted, fontfamily="monospace",
     )
-    # Accent line under title
-    ax_title.axhline(y=0.02, color="#e11d48", linewidth=2.5, xmin=0.04, xmax=0.96)
+    # Pixel-style double rule under the title
+    ax_title.axhline(y=0.04, color=accent, linewidth=3.0, xmin=0.04, xmax=0.96)
+    ax_title.axhline(y=-0.04, color=rule, linewidth=1.0, xmin=0.04, xmax=0.96)
 
     # ── Reconstruction paths ──
     ax_plot.set_aspect("equal")
@@ -546,25 +593,25 @@ def plot_poster(
             segs = _path_to_segments(fp)
             colors = np.linspace(0, 1, len(segs))
             lc = LineCollection(
-                segs, cmap=colormap, linewidth=line_width * 1.4, alpha=0.92,
+                segs, cmap=colormap, linewidth=line_width * 1.4, alpha=0.95,
             )
             lc.set_array(colors)
             ax_plot.add_collection(lc)
 
     # ── Footer ──
     n_contours = len(flipped_paths)
-    footer_left = f"contours: {n_contours}  ·  colormap: {colormap}"
-    ax_footer.axhline(y=0.88, color="#e2e8f0", linewidth=1.0, xmin=0.04, xmax=0.96)
+    footer_left = f"contours: {n_contours}  ·  colormap: {cmap_label}"
+    ax_footer.axhline(y=0.88, color=rule, linewidth=1.0, xmin=0.04, xmax=0.96)
     ax_footer.text(
         0.04, 0.5, footer_left,
         ha="left", va="center", transform=ax_footer.transAxes,
-        fontsize=9, color="#94a3b8", fontfamily="monospace",
+        fontsize=9, color=muted, fontfamily="monospace",
     )
     if equation_snippet:
         ax_footer.text(
             0.96, 0.5, equation_snippet,
             ha="right", va="center", transform=ax_footer.transAxes,
-            fontsize=8, color="#4f46e5", fontfamily="monospace",
+            fontsize=8, color=accent, fontfamily="monospace",
         )
 
     return fig
@@ -580,7 +627,7 @@ def fig_to_svg_bytes(fig: plt.Figure) -> bytes:
         SVG bytes (UTF-8 encoded XML).
     """
     buf = io.BytesIO()
-    fig.savefig(buf, format="svg", bbox_inches="tight")
+    fig.savefig(buf, format="svg", bbox_inches="tight", facecolor=fig.get_facecolor())
     buf.seek(0)
     return buf.read()
 
@@ -595,7 +642,7 @@ def fig_to_pdf_bytes(fig: plt.Figure) -> bytes:
         PDF bytes.
     """
     buf = io.BytesIO()
-    fig.savefig(buf, format="pdf", bbox_inches="tight")
+    fig.savefig(buf, format="pdf", bbox_inches="tight", facecolor=fig.get_facecolor())
     buf.seek(0)
     return buf.read()
 

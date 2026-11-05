@@ -17,8 +17,8 @@ spline:
   n_knots: 50           # approximate number of spline knots per contour
 
 render:
-  theme: light          # "dark" or "light"
-  colormap: plasma      # matplotlib colormap for gradient coloring
+  theme: night          # "night" (default) or "paper"
+  colormap: aurora      # aurora | sakura | dusk | moonlight | any matplotlib name
   fps: 30               # frames per second for animation
   animation_frames: 300 # total frames in epicycle animation
   line_width: 1.2       # stroke width for static plots

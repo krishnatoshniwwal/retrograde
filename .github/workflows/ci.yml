@@ -59,5 +59,8 @@ jobs:
           from src.render import plot_reconstruction, plot_poster
           from src.latex_export import build_latex_document
           from src.explainer import explain_reconstruction, explain_epicycles, explain_equations
+          from src.theme import NIGHT, register_colormaps
+          from src.samples import DEMO_SHAPES
+          from src.ui import hero, epicycle_viewer_html
           print('All imports OK')
           "

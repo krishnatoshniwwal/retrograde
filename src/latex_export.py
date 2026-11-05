@@ -279,11 +279,14 @@ def generate_pdf_bytes(
     import matplotlib.pyplot as plt
     from matplotlib.backends.backend_pdf import PdfPages
 
-    BG = "#0d0d0d"
-    FG = "#e2e8f0"
-    ACCENT = "#c084fc"
-    SUB = "#94a3b8"
-    DIV = "#2d2d4e"
+    from src.theme import PAPER, NIGHT
+
+    BG = PAPER["bg"]          # cream paper — readable on screen and in print
+    FG = PAPER["fg"]          # navy ink
+    ACCENT = PAPER["accent"]  # sky blue
+    SUB = PAPER["muted"]
+    DIV = PAPER["border"]
+    NIGHT_BAND = NIGHT["bg"]
 
     results = contour_results[:max_contours]
 
@@ -299,10 +302,17 @@ def generate_pdf_bytes(
             ax = fig.add_subplot(111)
             ax.set_facecolor(BG)
             ax.axis("off")
-            ax.text(0.5, 0.72, "Image-to-Function Renderer", ha="center",
-                    fontsize=22, fontweight="bold", color=ACCENT, transform=ax.transAxes)
-            ax.text(0.5, 0.64, "Symbolic Function Output", ha="center",
-                    fontsize=14, color="#a78bfa", transform=ax.transAxes)
+            # Night-sky band across the top of the cover
+            ax.add_patch(plt.Rectangle((0, 0.80), 1, 0.20, transform=ax.transAxes,
+                                       color=NIGHT_BAND, zorder=0))
+            ax.text(0.5, 0.90, "RETROGRADE", ha="center", va="center",
+                    fontsize=34, fontweight="bold", color=NIGHT["fg"],
+                    fontfamily="monospace", transform=ax.transAxes)
+            ax.text(0.5, 0.835, "every picture is a sum of circles", ha="center",
+                    fontsize=10, color=NIGHT["primary"], fontfamily="monospace",
+                    transform=ax.transAxes)
+            ax.text(0.5, 0.68, "Symbolic Function Output", ha="center",
+                    fontsize=18, fontweight="bold", color=FG, transform=ax.transAxes)
             ax.plot([0.15, 0.85], [0.60, 0.60], color=DIV, linewidth=0.8,
                     transform=ax.transAxes)
             ax.text(0.5, 0.54, f"Image: {image_name}", ha="center", fontsize=12,
@@ -311,10 +321,10 @@ def generate_pdf_bytes(
                     color=SUB, transform=ax.transAxes)
             ax.text(0.5, 0.42,
                     f"Contours: {len(results)}   |   Terms per contour: {n_terms}",
-                    ha="center", fontsize=10, color="#64748b", transform=ax.transAxes)
+                    ha="center", fontsize=10, color=SUB, transform=ax.transAxes)
             ax.text(0.5, 0.10,
                     "Generated with numpy.fft \xb7 scipy \xb7 sympy \xb7 matplotlib",
-                    ha="center", fontsize=8, color="#374151",
+                    ha="center", fontsize=8, color=SUB,
                     transform=ax.transAxes, style="italic")
             pdf.savefig(fig, facecolor=BG)
             plt.close(fig)
